@@ -1,0 +1,56 @@
+[project]
+name = "plumbline"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.128.0,<1.0.0",
+    "pydantic>=2.12.5,<3.0.0",
+    "pydantic-settings>=2.12.0,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.12.1",
+    "mypy>=1.19.1,<2.0.0",
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.2,<10.0.0",
+    "ruff>=0.14.14,<1.0.0",
+]
+
+# Ruff configuration
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "UP",     # pyupgrade
+]
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# Mypy configuration
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disable_error_code = ["misc"]
+
+# Commitizen configuration
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
