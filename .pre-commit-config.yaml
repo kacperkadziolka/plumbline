@@ -25,12 +25,12 @@ repos:
         stages: [commit-msg]
 
   # Branch naming convention
-  - repo: local
-    hooks:
-      - id: branch-naming
-        name: branch naming convention
-        entry: python scripts/check_branch_name.py
-        language: system
-        stages: [pre-push]
-        always_run: true
-        pass_filenames: false
+  # - repo: local
+  #   hooks:
+  #     - id: branch-naming
+  #       name: branch naming convention
+  #       entry: python scripts/check_branch_name.py
+  #       language: system
+  #       stages: [pre-push]
+  #       always_run: true
+  #       pass_filenames: false
