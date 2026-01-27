@@ -1,6 +1,8 @@
 import csv
 from decimal import Decimal, InvalidOperation
 from io import StringIO
+from pathlib import Path
+from typing import overload
 
 from pydantic import BaseModel
 
@@ -17,11 +19,16 @@ class HoldingRow(BaseModel):
     name: str | None = None
 
 
-REQUIRED_COLUMNS = frozenset({"ticker", "qty", "currency", "asset_type"})
+@overload
+def parse_holdings_csv(source: str) -> list[HoldingRow]: ...
 
 
-def parse_holdings_csv(text: str) -> list[HoldingRow]:
-    """Parse a holdings CSV string into a list of HoldingRow objects.
+@overload
+def parse_holdings_csv(source: Path) -> list[HoldingRow]: ...
+
+
+def parse_holdings_csv(source: str | Path) -> list[HoldingRow]:
+    """Parse a holdings CSV string or file into a list of HoldingRow objects.
 
     The CSV must have a header row with at least these columns:
     - ticker: Asset ticker symbol (will be uppercased)
@@ -32,11 +39,20 @@ def parse_holdings_csv(text: str) -> list[HoldingRow]:
     Optional columns:
     - name: Human-readable name for the asset
 
-    Returns a list of HoldingRow sorted by ticker (deterministic ordering).
+    Args:
+        source: Either a CSV string or Path to a CSV file.
+
+    Returns:
+        A list of HoldingRow sorted by ticker (deterministic ordering).
 
     Raises:
         ValidationError: If CSV is empty, missing required columns, or contains invalid data.
     """
+    if isinstance(source, Path):
+        text = source.read_text()
+    else:
+        text = source
+
     stripped = text.strip()
     if not stripped:
         raise ValidationError(
@@ -52,8 +68,11 @@ def parse_holdings_csv(text: str) -> list[HoldingRow]:
             details="No header row found",
         )
 
+    # Derive required columns from HoldingRow model
+    required_columns = {name for name, field in HoldingRow.model_fields.items() if field.is_required()}
+
     header_columns = {col.strip().lower() for col in reader.fieldnames}
-    missing_columns = REQUIRED_COLUMNS - header_columns
+    missing_columns = required_columns - header_columns
     if missing_columns:
         raise ValidationError(
             message=f"Missing required columns: {', '.join(sorted(missing_columns))}",

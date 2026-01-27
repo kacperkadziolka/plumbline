@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -269,3 +270,18 @@ MMMM,3,EUR,equity"""
 
     assert result1 == result2
     assert [r.ticker for r in result1] == ["AAAA", "MMMM", "ZZZZ"]
+
+
+# File path input tests
+
+
+def test_parse_from_file_path(tmp_path: Path):
+    """Parse CSV from file path."""
+    csv_file = tmp_path / "holdings.csv"
+    csv_file.write_text("ticker,qty,currency,asset_type\nAAPL,10,USD,equity")
+
+    result = parse_holdings_csv(csv_file)
+
+    assert len(result) == 1
+    assert result[0].ticker == "AAPL"
+    assert result[0].qty == Decimal("10")
