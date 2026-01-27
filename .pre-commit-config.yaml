@@ -7,15 +7,16 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  # Mypy - type checking
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.16.1
+  # Mypy - type checking (uses local mypy to match pyproject.toml settings)
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies:
-          - pydantic>=2.0
-          - pydantic-settings
-          - fastapi
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        args: [app]
 
   # Commitizen - conventional commits
   - repo: https://github.com/commitizen-tools/commitizen
