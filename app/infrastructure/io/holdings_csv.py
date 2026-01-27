@@ -18,6 +18,11 @@ class HoldingRow(BaseModel):
     asset_type: str
     name: str | None = None
 
+    @classmethod
+    def required_columns(cls) -> set[str]:
+        """Return the set of required column names for CSV parsing."""
+        return {name for name, field in cls.model_fields.items() if field.is_required()}
+
 
 @overload
 def parse_holdings_csv(source: str) -> list[HoldingRow]: ...
@@ -68,11 +73,8 @@ def parse_holdings_csv(source: str | Path) -> list[HoldingRow]:
             details="No header row found",
         )
 
-    # Derive required columns from HoldingRow model
-    required_columns = {name for name, field in HoldingRow.model_fields.items() if field.is_required()}
-
     header_columns = {col.strip().lower() for col in reader.fieldnames}
-    missing_columns = required_columns - header_columns
+    missing_columns = HoldingRow.required_columns() - header_columns
     if missing_columns:
         raise ValidationError(
             message=f"Missing required columns: {', '.join(sorted(missing_columns))}",
