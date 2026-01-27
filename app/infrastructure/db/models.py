@@ -35,7 +35,10 @@ class HoldingsSnapshot(Base):
     as_of_date: Mapped[datetime]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    positions: Mapped[list["Position"]] = relationship(back_populates="snapshot")
+    positions: Mapped[list["Position"]] = relationship(
+        back_populates="snapshot",
+        cascade="all, delete-orphan",
+    )
 
 
 class Position(Base):
