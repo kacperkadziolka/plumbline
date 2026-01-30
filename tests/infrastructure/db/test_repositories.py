@@ -1,34 +1,12 @@
-import tempfile
 from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DataMissingError
-from app.infrastructure.db.models import Asset, Base
+from app.infrastructure.db.models import Asset
 from app.infrastructure.db.repositories import HoldingsRepository, PositionInput
-
-
-@pytest.fixture
-async def session():
-    """Create a fresh database session for each test."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-
-        engine = create_async_engine(db_url, echo=False)
-        async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        async with async_session_factory() as session:
-            yield session
-
-        await engine.dispose()
-
 
 # get_or_create_asset tests
 
