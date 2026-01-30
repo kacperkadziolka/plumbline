@@ -41,7 +41,8 @@ async def import_holdings_manual(
     1. Parsing CSV to HoldingRow list
     2. Converting to PositionInput list
     3. Creating snapshot with positions (assets auto-upserted)
-    4. Committing transaction
+
+    Note: Does not commit. Caller owns the transaction boundary.
 
     Args:
         source: CSV content as string or Path to CSV file
@@ -63,9 +64,6 @@ async def import_holdings_manual(
     # 3. Create snapshot (handles asset upserts internally)
     repo = HoldingsRepository(session)
     snapshot = await repo.create_snapshot(as_of_date, positions)
-
-    # 4. Commit transaction
-    await session.commit()
 
     return ImportHoldingsResult(
         snapshot_id=snapshot.id,

@@ -1,35 +1,14 @@
-import tempfile
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.use_cases import ImportHoldingsResult, import_holdings_manual
 from app.core.errors import ValidationError
-from app.infrastructure.db.models import Asset, Base
+from app.infrastructure.db.models import Asset
 from app.infrastructure.db.repositories import HoldingsRepository
-
-
-@pytest.fixture
-async def session():
-    """Create a fresh database session for each test."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-
-        engine = create_async_engine(db_url, echo=False)
-        async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        async with async_session_factory() as session:
-            yield session
-
-        await engine.dispose()
-
 
 VALID_CSV = """ticker,qty,currency,asset_type,name
 AAPL,10.5,USD,equity,Apple Inc.
@@ -49,6 +28,7 @@ HEADER_ONLY_CSV = """ticker,qty,currency,asset_type,name
 async def test_import_holdings_creates_snapshot_with_correct_positions(session: AsyncSession) -> None:
     """Import CSV and verify snapshot has correct positions via get_latest_snapshot."""
     await import_holdings_manual(VALID_CSV, datetime(2024, 1, 15), session)
+    await session.commit()
 
     repo = HoldingsRepository(session)
     snapshot = await repo.get_latest_snapshot()
@@ -71,6 +51,7 @@ async def test_import_holdings_creates_snapshot_with_correct_positions(session: 
 async def test_import_holdings_returns_correct_result(session: AsyncSession) -> None:
     """Verify the returned result matches the created snapshot."""
     result = await import_holdings_manual(VALID_CSV_TWO_ROWS, datetime(2024, 1, 15), session)
+    await session.commit()
 
     assert isinstance(result, ImportHoldingsResult)
     assert result.position_count == 2
@@ -85,6 +66,7 @@ async def test_import_holdings_returns_correct_result(session: AsyncSession) -> 
 async def test_import_holdings_creates_assets_for_new_tickers(session: AsyncSession) -> None:
     """New tickers should create new assets."""
     await import_holdings_manual(VALID_CSV_TWO_ROWS, datetime(2024, 1, 15), session)
+    await session.commit()
 
     repo = HoldingsRepository(session)
     aapl = await repo.get_asset_by_ticker("AAPL")
@@ -106,6 +88,7 @@ async def test_import_holdings_reuses_existing_assets(session: AsyncSession) -> 
 
     # Import CSV with AAPL
     await import_holdings_manual(VALID_CSV_TWO_ROWS, datetime(2024, 1, 15), session)
+    await session.commit()
 
     repo = HoldingsRepository(session)
     snapshot = await repo.get_latest_snapshot()
@@ -119,6 +102,7 @@ async def test_import_holdings_latest_snapshot_returns_imported_snapshot(session
     """After import, get_latest_snapshot returns the new snapshot."""
     as_of_date = datetime(2024, 1, 15)
     await import_holdings_manual(VALID_CSV, as_of_date, session)
+    await session.commit()
 
     repo = HoldingsRepository(session)
     latest = await repo.get_latest_snapshot()
@@ -137,6 +121,7 @@ AAPL,10,USD,equity
 MSFT,15,USD,equity
 """
     await import_holdings_manual(csv, datetime(2024, 1, 15), session)
+    await session.commit()
 
     repo = HoldingsRepository(session)
     snapshot = await repo.get_latest_snapshot()
@@ -149,6 +134,7 @@ MSFT,15,USD,equity
 async def test_import_holdings_with_header_only_csv(session: AsyncSession) -> None:
     """Header-only CSV creates empty snapshot."""
     result = await import_holdings_manual(HEADER_ONLY_CSV, datetime(2024, 1, 15), session)
+    await session.commit()
 
     assert result.position_count == 0
 
@@ -164,6 +150,7 @@ async def test_import_holdings_with_file_path(session: AsyncSession, tmp_path: P
     csv_file.write_text(VALID_CSV_TWO_ROWS)
 
     result = await import_holdings_manual(csv_file, datetime(2024, 1, 15), session)
+    await session.commit()
 
     assert result.position_count == 2
 
