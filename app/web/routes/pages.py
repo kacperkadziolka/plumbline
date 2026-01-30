@@ -9,3 +9,8 @@ templates = Jinja2Templates(directory="app/web/templates")
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html")
+
+
+@router.get("/holdings", response_class=HTMLResponse)
+async def holdings_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "holdings.html")
