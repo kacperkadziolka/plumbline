@@ -87,8 +87,8 @@ AAPL,-5,USD,equity
 def test_upload_valid_ibkr_shows_success(client: TestClient) -> None:
     ibkr_csv = (
         "Statement,Data,Period,January 2026\n"
-        "Financial Instrument Information,Header,Cat,Symbol,Desc,,,,,Type,\n"
-        "Financial Instrument Information,Data,Stocks,AMZN,AMAZON,,,,,COMMON,\n"
+        "Financial Instrument Information,Header,Cat,Symbol,Desc,,,,,,Type,\n"
+        "Financial Instrument Information,Data,Stocks,AMZN,AMAZON,,,,,,COMMON,\n"
         "Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity\n"
         "Open Positions,Data,Summary,Stocks,USD,AMZN,10\n"
     )

@@ -43,20 +43,25 @@ def _parse_financial_instrument_info(rows: list[list[str]]) -> dict[str, AssetIn
     [2] Asset Category: e.g., "Stocks"
     [3] Symbol: e.g., "AMZN"
     [4] Description: e.g., "AMAZON.COM INC"
-    ...
-    [9] Type: e.g., "COMMON" or "ETF"
+    [5] Conid
+    [6] Security ID
+    [7] Underlying
+    [8] Listing Exch
+    [9] Multiplier
+    [10] Type: e.g., "COMMON" or "ETF"
+    [11] Code
     """
     result: dict[str, AssetInfo] = {}
 
     for row in rows:
-        if len(row) < 10:
+        if len(row) < 11:
             continue
         if row[1] != "Data":
             continue
 
         symbol = row[3].strip().upper()
         description = row[4].strip()
-        instrument_type = row[9].strip() if len(row) > 9 else ""
+        instrument_type = row[10].strip() if len(row) > 10 else ""
 
         if symbol:
             result[symbol] = AssetInfo(

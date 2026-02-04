@@ -10,9 +10,9 @@ from app.infrastructure.db.repositories import HoldingsRepository
 
 VALID_IBKR_CSV = (
     "Statement,Data,Period,January 2026\n"
-    "Financial Instrument Information,Header,Cat,Symbol,Desc,,,,,Type,\n"
-    "Financial Instrument Information,Data,Stocks,AMZN,AMAZON.COM INC,,,,,COMMON,\n"
-    "Financial Instrument Information,Data,Stocks,CSPX,ISHARES CORE S&P 500,,,,,ETF,\n"
+    "Financial Instrument Information,Header,Cat,Symbol,Desc,,,,,,Type,\n"
+    "Financial Instrument Information,Data,Stocks,AMZN,AMAZON.COM INC,,,,,,COMMON,\n"
+    "Financial Instrument Information,Data,Stocks,CSPX,ISHARES CORE S&P 500,,,,,,ETF,\n"
     "Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity\n"
     "Open Positions,Data,Summary,Stocks,USD,AMZN,10\n"
     "Open Positions,Data,Summary,Stocks,EUR,CSPX,5.5\n"
