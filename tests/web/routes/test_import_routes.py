@@ -19,10 +19,57 @@ def test_import_page_shows_both_tabs(client: TestClient) -> None:
     assert "IBKR Statement" in response.text
 
 
-def test_holdings_page_renders(client: TestClient) -> None:
+def test_holdings_page_renders_empty_state(client: TestClient) -> None:
+    """Holdings page renders with empty state when no data."""
     response = client.get("/holdings")
     assert response.status_code == 200
     assert "Holdings" in response.text
+    assert "No holdings imported" in response.text
+    assert "Import Holdings" in response.text
+
+
+def test_holdings_page_displays_imported_data(client: TestClient) -> None:
+    """Holdings page displays data after import."""
+    csv_content = """ticker,qty,currency,asset_type,name
+AAPL,10,USD,equity,Apple Inc.
+MSFT,5,USD,equity,Microsoft Corporation
+"""
+    client.post(
+        "/import/holdings/manual",
+        files={"file": ("holdings.csv", BytesIO(csv_content.encode()), "text/csv")},
+    )
+
+    response = client.get("/holdings")
+    assert response.status_code == 200
+    assert "AAPL" in response.text
+    assert "Apple Inc." in response.text
+    assert "MSFT" in response.text
+    assert "Microsoft Corporation" in response.text
+
+
+def test_holdings_page_shows_snapshot_metadata(client: TestClient) -> None:
+    """Holdings page shows snapshot date and ID."""
+    csv_content = """ticker,qty,currency,asset_type
+AAPL,10,USD,equity
+"""
+    client.post(
+        "/import/holdings/manual",
+        files={"file": ("holdings.csv", BytesIO(csv_content.encode()), "text/csv")},
+    )
+
+    response = client.get("/holdings")
+    assert response.status_code == 200
+    assert "Snapshot Date:" in response.text
+    assert "Snapshot ID:" in response.text
+    assert "Positions:" in response.text
+
+
+def test_holdings_page_has_refresh_button(client: TestClient) -> None:
+    """Holdings page includes HTMX refresh button."""
+    response = client.get("/holdings")
+    assert response.status_code == 200
+    assert 'hx-get="/holdings"' in response.text
+    assert "Refresh" in response.text
 
 
 def test_upload_valid_csv_shows_success(client: TestClient) -> None:

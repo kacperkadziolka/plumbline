@@ -5,24 +5,124 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holdings - Plumbline</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
-<body class="min-h-screen bg-gray-100 flex items-center justify-center">
-    <div class="bg-white rounded-xl shadow-lg p-8 max-w-md w-full mx-4">
-        <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Holdings</h1>
+<body class="min-h-screen bg-gray-100">
+    <div class="max-w-4xl mx-auto py-8 px-4">
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold text-gray-800">Holdings</h1>
+                <div class="flex space-x-2">
+                    <button
+                        hx-get="/holdings"
+                        hx-target="body"
+                        hx-swap="outerHTML"
+                        class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
+                    >
+                        Refresh
+                    </button>
+                    <a href="/import"
+                       class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                        Import Holdings
+                    </a>
+                </div>
+            </div>
 
-        <p class="text-gray-600 text-center mb-6">
-            Holdings view coming soon.
-        </p>
+            {% if holdings %}
+            <!-- Snapshot Info -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+                    <div>
+                        <span class="font-medium">Snapshot Date:</span>
+                        {{ holdings.as_of_date.strftime("%Y-%m-%d %H:%M UTC") }}
+                    </div>
+                    <div>
+                        <span class="font-medium">Positions:</span>
+                        {{ holdings.position_count }}
+                    </div>
+                    <div>
+                        <span class="font-medium">Snapshot ID:</span>
+                        #{{ holdings.snapshot_id }}
+                    </div>
+                </div>
+            </div>
 
-        <div class="flex justify-center space-x-4">
-            <a href="/import"
-               class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
-                Import Holdings
-            </a>
-            <a href="/"
-               class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors">
-                Home
-            </a>
+            <!-- Holdings Table -->
+            {% if holdings.positions %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Ticker
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Name
+                            </th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Quantity
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Currency
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Type
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for position in holdings.positions %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {{ position.ticker }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ position.name or "-" }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+                                {{ position.qty }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ position.currency }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ position.asset_type }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <!-- Empty Snapshot (imported with no positions) -->
+            <p class="text-gray-500 text-center py-8">
+                This snapshot contains no positions.
+            </p>
+            {% endif %}
+
+            {% else %}
+            <!-- No Snapshot Exists -->
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No holdings imported</h3>
+                <p class="mt-1 text-sm text-gray-500">Get started by importing your holdings.</p>
+                <div class="mt-6">
+                    <a href="/import"
+                       class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+                        Import Holdings
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Navigation -->
+        <div class="mt-6 text-center">
+            <a href="/" class="text-blue-600 hover:text-blue-800 text-sm">Back to Home</a>
         </div>
     </div>
 </body>
