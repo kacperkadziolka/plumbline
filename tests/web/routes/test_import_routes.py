@@ -6,15 +6,18 @@ from fastapi.testclient import TestClient
 def test_import_page_renders_form(client: TestClient) -> None:
     response = client.get("/import")
     assert response.status_code == 200
-    assert "Import Holdings" in response.text
+    assert "Import Data" in response.text
     assert 'enctype="multipart/form-data"' in response.text
     assert 'type="file"' in response.text
     assert "Required columns" in response.text
 
 
-def test_import_page_shows_both_tabs(client: TestClient) -> None:
+def test_import_page_shows_all_tabs(client: TestClient) -> None:
     response = client.get("/import")
     assert response.status_code == 200
+    assert "Holdings" in response.text
+    assert "Prices" in response.text
+    assert "FX Rates" in response.text
     assert "Manual CSV" in response.text
     assert "IBKR Statement" in response.text
 
@@ -170,3 +173,96 @@ def test_upload_ibkr_missing_positions_shows_error(client: TestClient) -> None:
     assert response.status_code == 400
     assert "Validation Error" in response.text
     assert "Open Positions" in response.text
+
+
+# Prices Import Tests
+
+
+def test_upload_valid_prices_csv_shows_success(client: TestClient) -> None:
+    # First create assets via holdings import
+    holdings_csv = """ticker,qty,currency,asset_type
+AAPL,10,USD,equity
+"""
+    client.post(
+        "/import/holdings/manual",
+        files={"file": ("holdings.csv", BytesIO(holdings_csv.encode()), "text/csv")},
+    )
+
+    prices_csv = """date,ticker,close,currency
+2024-01-15,AAPL,185.92,USD
+2024-01-16,AAPL,186.50,USD
+"""
+    response = client.post(
+        "/import/prices",
+        files={"file": ("prices.csv", BytesIO(prices_csv.encode()), "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert "Import Successful" in response.text
+    assert "2 price rows imported" in response.text
+
+
+def test_upload_empty_prices_csv_shows_error(client: TestClient) -> None:
+    response = client.post(
+        "/import/prices",
+        files={"file": ("empty.csv", BytesIO(b""), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert "Validation Error" in response.text
+    assert "CSV is empty" in response.text
+
+
+def test_upload_prices_unknown_ticker_shows_error(client: TestClient) -> None:
+    prices_csv = """date,ticker,close,currency
+2024-01-15,ZZZZ,100.00,USD
+"""
+    response = client.post(
+        "/import/prices",
+        files={"file": ("prices.csv", BytesIO(prices_csv.encode()), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert "ZZZZ" in response.text
+
+
+# FX Import Tests
+
+
+def test_upload_valid_fx_csv_shows_success(client: TestClient) -> None:
+    fx_csv = """date,pair,rate
+2024-01-15,USD/EUR,0.92
+2024-01-15,GBP/EUR,1.17
+"""
+    response = client.post(
+        "/import/fx",
+        files={"file": ("fx.csv", BytesIO(fx_csv.encode()), "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert "Import Successful" in response.text
+    assert "2 FX rate rows imported" in response.text
+
+
+def test_upload_empty_fx_csv_shows_error(client: TestClient) -> None:
+    response = client.post(
+        "/import/fx",
+        files={"file": ("empty.csv", BytesIO(b""), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert "Validation Error" in response.text
+    assert "CSV is empty" in response.text
+
+
+def test_upload_fx_invalid_pair_shows_error(client: TestClient) -> None:
+    fx_csv = """date,pair,rate
+2024-01-15,INVALID,0.92
+"""
+    response = client.post(
+        "/import/fx",
+        files={"file": ("fx.csv", BytesIO(fx_csv.encode()), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert "Validation Error" in response.text

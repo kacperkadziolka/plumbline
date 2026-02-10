@@ -3,43 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Import Holdings - Plumbline</title>
+    <title>Import Data - Plumbline</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-gray-100 flex items-center justify-center">
     <div class="bg-white rounded-xl shadow-lg p-8 max-w-lg w-full mx-4">
-        <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Import Holdings</h1>
+        <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Import Data</h1>
 
-        <!-- Format Selection Tabs -->
+        <!-- Top-level Tabs -->
         <div class="flex border-b border-gray-200 mb-6">
             <button
                 type="button"
-                id="tab-manual"
-                onclick="showTab('manual')"
+                id="tab-holdings"
+                onclick="showTab('holdings')"
                 class="flex-1 py-2 px-4 text-center font-medium border-b-2 border-blue-600 text-blue-600"
             >
-                Manual CSV
+                Holdings
             </button>
             <button
                 type="button"
-                id="tab-ibkr"
-                onclick="showTab('ibkr')"
+                id="tab-prices"
+                onclick="showTab('prices')"
                 class="flex-1 py-2 px-4 text-center font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"
             >
-                IBKR Statement
+                Prices
+            </button>
+            <button
+                type="button"
+                id="tab-fx"
+                onclick="showTab('fx')"
+                class="flex-1 py-2 px-4 text-center font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"
+            >
+                FX Rates
             </button>
         </div>
 
-        <!-- Manual CSV Form -->
-        <div id="form-manual">
-            <form action="/import/holdings/manual" method="post" enctype="multipart/form-data">
+        <!-- Holdings Section -->
+        <div id="form-holdings">
+            <!-- Holdings Sub-tabs -->
+            <div class="flex border-b border-gray-200 mb-6">
+                <button
+                    type="button"
+                    id="tab-manual"
+                    onclick="showHoldingsTab('manual')"
+                    class="flex-1 py-2 px-4 text-center text-sm font-medium border-b-2 border-blue-600 text-blue-600"
+                >
+                    Manual CSV
+                </button>
+                <button
+                    type="button"
+                    id="tab-ibkr"
+                    onclick="showHoldingsTab('ibkr')"
+                    class="flex-1 py-2 px-4 text-center text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"
+                >
+                    IBKR Statement
+                </button>
+            </div>
+
+            <!-- Manual CSV Form -->
+            <div id="form-manual">
+                <form action="/import/holdings/manual" method="post" enctype="multipart/form-data">
+                    <div class="mb-6">
+                        <label for="file-manual" class="block text-sm font-medium text-gray-700 mb-2">
+                            Select CSV file
+                        </label>
+                        <input
+                            type="file"
+                            id="file-manual"
+                            name="file"
+                            accept=".csv"
+                            required
+                            class="block w-full text-sm text-gray-500
+                                   file:mr-4 file:py-2 file:px-4
+                                   file:rounded-lg file:border-0
+                                   file:text-sm file:font-medium
+                                   file:bg-blue-50 file:text-blue-700
+                                   hover:file:bg-blue-100
+                                   cursor-pointer"
+                        >
+                    </div>
+
+                    <p class="text-sm text-gray-500 mb-6">
+                        Required columns: ticker, qty, currency, asset_type
+                    </p>
+
+                    <button
+                        type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Upload
+                    </button>
+                </form>
+            </div>
+
+            <!-- IBKR Activity Statement Form -->
+            <div id="form-ibkr" class="hidden">
+                <form action="/import/holdings/ibkr" method="post" enctype="multipart/form-data">
+                    <div class="mb-6">
+                        <label for="file-ibkr" class="block text-sm font-medium text-gray-700 mb-2">
+                            Select IBKR Activity Statement CSV
+                        </label>
+                        <input
+                            type="file"
+                            id="file-ibkr"
+                            name="file"
+                            accept=".csv"
+                            required
+                            class="block w-full text-sm text-gray-500
+                                   file:mr-4 file:py-2 file:px-4
+                                   file:rounded-lg file:border-0
+                                   file:text-sm file:font-medium
+                                   file:bg-blue-50 file:text-blue-700
+                                   hover:file:bg-blue-100
+                                   cursor-pointer"
+                        >
+                    </div>
+
+                    <p class="text-sm text-gray-500 mb-6">
+                        Export from IBKR: Reports &rarr; Statements &rarr; Activity &rarr; CSV
+                    </p>
+
+                    <button
+                        type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Upload
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Prices Form -->
+        <div id="form-prices" class="hidden">
+            <form action="/import/prices" method="post" enctype="multipart/form-data">
                 <div class="mb-6">
-                    <label for="file-manual" class="block text-sm font-medium text-gray-700 mb-2">
-                        Select CSV file
+                    <label for="file-prices" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select prices CSV file
                     </label>
                     <input
                         type="file"
-                        id="file-manual"
+                        id="file-prices"
                         name="file"
                         accept=".csv"
                         required
@@ -53,8 +156,12 @@
                     >
                 </div>
 
-                <p class="text-sm text-gray-500 mb-6">
-                    Required columns: ticker, qty, currency, asset_type
+                <p class="text-sm text-gray-500 mb-4">
+                    Required columns: date, ticker, close, currency
+                </p>
+
+                <p class="text-xs text-amber-600 mb-6">
+                    Tickers must already exist (import holdings first).
                 </p>
 
                 <button
@@ -66,16 +173,16 @@
             </form>
         </div>
 
-        <!-- IBKR Activity Statement Form -->
-        <div id="form-ibkr" class="hidden">
-            <form action="/import/holdings/ibkr" method="post" enctype="multipart/form-data">
+        <!-- FX Rates Form -->
+        <div id="form-fx" class="hidden">
+            <form action="/import/fx" method="post" enctype="multipart/form-data">
                 <div class="mb-6">
-                    <label for="file-ibkr" class="block text-sm font-medium text-gray-700 mb-2">
-                        Select IBKR Activity Statement CSV
+                    <label for="file-fx" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select FX rates CSV file
                     </label>
                     <input
                         type="file"
-                        id="file-ibkr"
+                        id="file-fx"
                         name="file"
                         accept=".csv"
                         required
@@ -89,8 +196,12 @@
                     >
                 </div>
 
-                <p class="text-sm text-gray-500 mb-6">
-                    Export from IBKR: Reports &rarr; Statements &rarr; Activity &rarr; CSV
+                <p class="text-sm text-gray-500 mb-4">
+                    Required columns: date, pair, rate
+                </p>
+
+                <p class="text-xs text-gray-400 mb-6">
+                    Pair format: XXX/YYY (e.g. USD/EUR)
                 </p>
 
                 <button
@@ -109,6 +220,23 @@
 
     <script>
         function showTab(tab) {
+            const tabs = ['holdings', 'prices', 'fx'];
+            tabs.forEach(t => {
+                const tabBtn = document.getElementById('tab-' + t);
+                const form = document.getElementById('form-' + t);
+                if (t === tab) {
+                    tabBtn.classList.add('border-blue-600', 'text-blue-600');
+                    tabBtn.classList.remove('border-transparent', 'text-gray-500');
+                    form.classList.remove('hidden');
+                } else {
+                    tabBtn.classList.remove('border-blue-600', 'text-blue-600');
+                    tabBtn.classList.add('border-transparent', 'text-gray-500');
+                    form.classList.add('hidden');
+                }
+            });
+        }
+
+        function showHoldingsTab(tab) {
             const tabs = ['manual', 'ibkr'];
             tabs.forEach(t => {
                 const tabBtn = document.getElementById('tab-' + t);
