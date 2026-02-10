@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -6,7 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DataMissingError
 from app.infrastructure.db.models import Asset
-from app.infrastructure.db.repositories import HoldingsRepository, PositionInput
+from app.infrastructure.db.repositories import (
+    FxInput,
+    FxRepository,
+    HoldingsRepository,
+    PositionInput,
+    PriceInput,
+    PricesRepository,
+)
 
 # get_or_create_asset tests
 
@@ -292,3 +299,200 @@ async def test_delete_snapshot_raises_when_not_found(session: AsyncSession) -> N
         await repo.delete_snapshot(99999)
 
     assert "Holdings snapshot not found" in exc_info.value.message
+
+
+# PricesRepository — get_assets_by_tickers tests
+
+
+async def test_get_assets_by_tickers_returns_matching_assets(session: AsyncSession) -> None:
+    session.add(Asset(ticker="AAPL", currency="USD", asset_type="equity"))
+    session.add(Asset(ticker="GOOGL", currency="USD", asset_type="equity"))
+    await session.flush()
+
+    repo = PricesRepository(session)
+    result = await repo.get_assets_by_tickers({"AAPL", "GOOGL", "MISSING"})
+
+    assert set(result.keys()) == {"AAPL", "GOOGL"}
+
+
+async def test_get_assets_by_tickers_returns_empty_for_no_tickers(session: AsyncSession) -> None:
+    repo = PricesRepository(session)
+    result = await repo.get_assets_by_tickers(set())
+
+    assert result == {}
+
+
+# PricesRepository — upsert_prices tests
+
+
+async def test_upsert_prices_inserts_new_rows(session: AsyncSession) -> None:
+    asset = Asset(ticker="AAPL", currency="USD", asset_type="equity")
+    session.add(asset)
+    await session.flush()
+
+    repo = PricesRepository(session)
+    prices = [PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("150.00"), currency="USD")]
+    count = await repo.upsert_prices(prices, {"AAPL": asset})
+    await session.commit()
+
+    assert count == 1
+    result = await repo.get_prices("AAPL")
+    assert len(result) == 1
+    assert result[0].close == Decimal("150.00")
+    assert result[0].currency == "USD"
+
+
+async def test_upsert_prices_updates_on_conflict(session: AsyncSession) -> None:
+    asset = Asset(ticker="AAPL", currency="USD", asset_type="equity")
+    session.add(asset)
+    await session.flush()
+
+    repo = PricesRepository(session)
+
+    # First insert
+    prices1 = [PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("150.00"), currency="USD")]
+    await repo.upsert_prices(prices1, {"AAPL": asset})
+    await session.commit()
+
+    # Upsert with new price
+    prices2 = [PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("155.00"), currency="USD")]
+    await repo.upsert_prices(prices2, {"AAPL": asset})
+    await session.commit()
+
+    result = await repo.get_prices("AAPL")
+    assert len(result) == 1
+    assert result[0].close == Decimal("155.00")
+
+
+async def test_upsert_prices_empty_list(session: AsyncSession) -> None:
+    repo = PricesRepository(session)
+    count = await repo.upsert_prices([], {})
+
+    assert count == 0
+
+
+# PricesRepository — get_prices tests
+
+
+async def test_get_prices_with_date_range(session: AsyncSession) -> None:
+    asset = Asset(ticker="AAPL", currency="USD", asset_type="equity")
+    session.add(asset)
+    await session.flush()
+
+    repo = PricesRepository(session)
+    prices = [
+        PriceInput(ticker="AAPL", date=date(2024, 1, 10), close=Decimal("148"), currency="USD"),
+        PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("150"), currency="USD"),
+        PriceInput(ticker="AAPL", date=date(2024, 1, 20), close=Decimal("152"), currency="USD"),
+    ]
+    await repo.upsert_prices(prices, {"AAPL": asset})
+    await session.commit()
+
+    filtered = await repo.get_prices("AAPL", start_date=date(2024, 1, 12), end_date=date(2024, 1, 18))
+    assert len(filtered) == 1
+    assert filtered[0].date == date(2024, 1, 15)
+
+
+async def test_get_prices_raises_for_unknown_ticker(session: AsyncSession) -> None:
+    repo = PricesRepository(session)
+
+    with pytest.raises(DataMissingError) as exc_info:
+        await repo.get_prices("NONEXISTENT")
+
+    assert "NONEXISTENT" in exc_info.value.message
+
+
+async def test_get_prices_sorted_by_date_ascending(session: AsyncSession) -> None:
+    asset = Asset(ticker="AAPL", currency="USD", asset_type="equity")
+    session.add(asset)
+    await session.flush()
+
+    repo = PricesRepository(session)
+    prices = [
+        PriceInput(ticker="AAPL", date=date(2024, 1, 20), close=Decimal("152"), currency="USD"),
+        PriceInput(ticker="AAPL", date=date(2024, 1, 10), close=Decimal("148"), currency="USD"),
+        PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("150"), currency="USD"),
+    ]
+    await repo.upsert_prices(prices, {"AAPL": asset})
+    await session.commit()
+
+    result = await repo.get_prices("AAPL")
+    dates = [p.date for p in result]
+    assert dates == sorted(dates)
+
+
+# FxRepository — upsert_fx_rates tests
+
+
+async def test_upsert_fx_rates_inserts_new_rows(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    rates = [FxInput(date=date(2024, 1, 15), pair="USD/EUR", rate=Decimal("0.92"))]
+    count = await repo.upsert_fx_rates(rates)
+    await session.commit()
+
+    assert count == 1
+    result = await repo.get_fx_rates("USD/EUR")
+    assert len(result) == 1
+    assert result[0].rate == Decimal("0.92")
+
+
+async def test_upsert_fx_rates_updates_on_conflict(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+
+    rates1 = [FxInput(date=date(2024, 1, 15), pair="USD/EUR", rate=Decimal("0.92"))]
+    await repo.upsert_fx_rates(rates1)
+    await session.commit()
+
+    rates2 = [FxInput(date=date(2024, 1, 15), pair="USD/EUR", rate=Decimal("0.93"))]
+    await repo.upsert_fx_rates(rates2)
+    await session.commit()
+
+    result = await repo.get_fx_rates("USD/EUR")
+    assert len(result) == 1
+    assert result[0].rate == Decimal("0.93")
+
+
+async def test_upsert_fx_rates_empty_list(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    count = await repo.upsert_fx_rates([])
+
+    assert count == 0
+
+
+# FxRepository — get_fx_rates tests
+
+
+async def test_get_fx_rates_with_date_range(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    rates = [
+        FxInput(date=date(2024, 1, 10), pair="USD/EUR", rate=Decimal("0.91")),
+        FxInput(date=date(2024, 1, 15), pair="USD/EUR", rate=Decimal("0.92")),
+        FxInput(date=date(2024, 1, 20), pair="USD/EUR", rate=Decimal("0.93")),
+    ]
+    await repo.upsert_fx_rates(rates)
+    await session.commit()
+
+    filtered = await repo.get_fx_rates("USD/EUR", start_date=date(2024, 1, 12), end_date=date(2024, 1, 18))
+    assert len(filtered) == 1
+    assert filtered[0].date == date(2024, 1, 15)
+
+
+async def test_get_fx_rates_sorted_by_date_ascending(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    rates = [
+        FxInput(date=date(2024, 1, 20), pair="USD/EUR", rate=Decimal("0.93")),
+        FxInput(date=date(2024, 1, 10), pair="USD/EUR", rate=Decimal("0.91")),
+    ]
+    await repo.upsert_fx_rates(rates)
+    await session.commit()
+
+    result = await repo.get_fx_rates("USD/EUR")
+    dates = [r.date for r in result]
+    assert dates == sorted(dates)
+
+
+async def test_get_fx_rates_returns_empty_for_unknown_pair(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    result = await repo.get_fx_rates("XXX/YYY")
+
+    assert result == []

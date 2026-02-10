@@ -1,13 +1,14 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import DataMissingError
-from app.infrastructure.db.models import Asset, HoldingsSnapshot, Position
+from app.infrastructure.db.models import Asset, FxDaily, HoldingsSnapshot, Position, PriceDaily
 
 
 class PositionInput(BaseModel):
@@ -155,3 +156,139 @@ class HoldingsRepository:
         snapshot = await self.get_snapshot(snapshot_id)
         await self._session.delete(snapshot)
         await self._session.flush()
+
+
+class PriceInput(BaseModel):
+    """Input data for creating a daily price record."""
+
+    ticker: str
+    date: date
+    close: Decimal
+    currency: str
+
+
+class PricesRepository:
+    """Repository for daily price operations."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_assets_by_tickers(self, tickers: set[str]) -> dict[str, Asset]:
+        """Batch-fetch assets by tickers. Returns {ticker: Asset} for found tickers."""
+        if not tickers:
+            return {}
+        result = await self._session.execute(select(Asset).where(Asset.ticker.in_(tickers)))
+        return {asset.ticker: asset for asset in result.scalars().all()}
+
+    async def upsert_prices(self, prices: list[PriceInput], ticker_to_asset: dict[str, Asset]) -> int:
+        """Upsert daily price rows. Returns count of rows upserted.
+
+        Uses INSERT ... ON CONFLICT UPDATE for idempotent imports.
+        Caller must validate that all tickers exist before calling this.
+        """
+        if not prices:
+            return 0
+
+        for price in prices:
+            asset = ticker_to_asset[price.ticker]
+            stmt = sqlite_insert(PriceDaily).values(
+                date=price.date,
+                asset_id=asset.id,
+                close=price.close,
+                currency=price.currency,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["date", "asset_id"],
+                set_={"close": stmt.excluded.close, "currency": stmt.excluded.currency},
+            )
+            await self._session.execute(stmt)
+
+        await self._session.flush()
+        return len(prices)
+
+    async def get_prices(
+        self,
+        ticker: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[PriceDaily]:
+        """Query prices for a ticker, optionally filtered by date range.
+
+        Returns prices sorted by date ascending.
+        Raises DataMissingError if ticker not found.
+        """
+        asset_result = await self._session.execute(select(Asset).where(Asset.ticker == ticker))
+        asset = asset_result.scalar_one_or_none()
+        if asset is None:
+            raise DataMissingError(
+                message=f"Unknown ticker: {ticker}",
+                details=f"No asset with ticker '{ticker}' exists",
+            )
+
+        query = select(PriceDaily).where(PriceDaily.asset_id == asset.id)
+        if start_date is not None:
+            query = query.where(PriceDaily.date >= start_date)
+        if end_date is not None:
+            query = query.where(PriceDaily.date <= end_date)
+        query = query.order_by(PriceDaily.date)
+
+        price_result = await self._session.execute(query)
+        return list(price_result.scalars().all())
+
+
+class FxInput(BaseModel):
+    """Input data for creating a daily FX rate record."""
+
+    date: date
+    pair: str
+    rate: Decimal
+
+
+class FxRepository:
+    """Repository for daily FX rate operations."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def upsert_fx_rates(self, rates: list[FxInput]) -> int:
+        """Upsert daily FX rate rows. Returns count of rows upserted.
+
+        Uses INSERT ... ON CONFLICT UPDATE for idempotent imports.
+        """
+        if not rates:
+            return 0
+
+        for fx in rates:
+            stmt = sqlite_insert(FxDaily).values(
+                date=fx.date,
+                pair=fx.pair,
+                rate=fx.rate,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["date", "pair"],
+                set_={"rate": stmt.excluded.rate},
+            )
+            await self._session.execute(stmt)
+
+        await self._session.flush()
+        return len(rates)
+
+    async def get_fx_rates(
+        self,
+        pair: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[FxDaily]:
+        """Query FX rates for a pair, optionally filtered by date range.
+
+        Returns rates sorted by date ascending.
+        """
+        query = select(FxDaily).where(FxDaily.pair == pair)
+        if start_date is not None:
+            query = query.where(FxDaily.date >= start_date)
+        if end_date is not None:
+            query = query.where(FxDaily.date <= end_date)
+        query = query.order_by(FxDaily.date)
+
+        result = await self._session.execute(query)
+        return list(result.scalars().all())

@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, String, func
+from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -51,3 +51,26 @@ class Position(Base):
 
     snapshot: Mapped["HoldingsSnapshot"] = relationship(back_populates="positions")
     asset: Mapped["Asset"] = relationship(back_populates="positions")
+
+
+class PriceDaily(Base):
+    __tablename__ = "prices_daily"
+    __table_args__ = (UniqueConstraint("date", "asset_id", name="uq_prices_daily_date_asset"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[date]
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"))
+    close: Mapped[Decimal]
+    currency: Mapped[str] = mapped_column(String(3))
+
+    asset: Mapped["Asset"] = relationship()
+
+
+class FxDaily(Base):
+    __tablename__ = "fx_daily"
+    __table_args__ = (UniqueConstraint("date", "pair", name="uq_fx_daily_date_pair"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[date]
+    pair: Mapped[str] = mapped_column(String(7))
+    rate: Mapped[Decimal]
