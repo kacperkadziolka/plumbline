@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import DataMissingError
-from app.infrastructure.db.models import Asset, FxDaily, HoldingsSnapshot, Position, PriceDaily
+from app.infrastructure.db.models import Asset, FxDaily, HoldingsSnapshot, Policy, Position, PriceDaily
 
 
 class PositionInput(BaseModel):
@@ -322,5 +322,39 @@ class FxRepository:
             query = query.where(FxDaily.date <= end_date)
         query = query.order_by(FxDaily.date)
 
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+
+class PolicyRepository:
+    """Repository for policy version operations."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, name: str, yaml_text: str, policy_hash: str) -> Policy:
+        """Save a policy version. Idempotent: duplicate hash returns existing row."""
+        existing = await self.get_by_hash(policy_hash)
+        if existing is not None:
+            return existing
+
+        policy = Policy(name=name, yaml_text=yaml_text, hash=policy_hash)
+        self._session.add(policy)
+        await self._session.flush()
+        return policy
+
+    async def get_by_hash(self, policy_hash: str) -> Policy | None:
+        """Get a policy by its content hash, or None if not found."""
+        result = await self._session.execute(select(Policy).where(Policy.hash == policy_hash))
+        return result.scalar_one_or_none()
+
+    async def list_versions(self, name: str | None = None, limit: int = 100) -> list[Policy]:
+        """List policy versions ordered by created_at descending.
+
+        If name is provided, filters to only that policy name.
+        """
+        query = select(Policy).order_by(Policy.created_at.desc(), Policy.id.desc()).limit(limit)
+        if name is not None:
+            query = query.where(Policy.name == name)
         result = await self._session.execute(query)
         return list(result.scalars().all())
