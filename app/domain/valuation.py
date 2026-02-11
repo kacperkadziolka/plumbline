@@ -99,3 +99,36 @@ def valuate_portfolio(
         positions=valuations,
         total_value=total,
     )
+
+
+@dataclass(frozen=True)
+class CurrencyExposure:
+    currency: str
+    value_base: Decimal
+    weight: Decimal
+
+
+def compute_weights(valuation: PortfolioValuation) -> list[Decimal]:
+    if not valuation.positions or valuation.total_value == Decimal("0"):
+        return [Decimal("0")] * len(valuation.positions)
+    return [pos.value_base / valuation.total_value for pos in valuation.positions]
+
+
+def compute_currency_exposures(valuation: PortfolioValuation) -> list[CurrencyExposure]:
+    if not valuation.positions:
+        return []
+
+    totals_by_ccy: dict[str, Decimal] = {}
+    for pos in valuation.positions:
+        totals_by_ccy[pos.currency] = totals_by_ccy.get(pos.currency, Decimal("0")) + pos.value_base
+
+    if valuation.total_value == Decimal("0"):
+        return [
+            CurrencyExposure(currency=ccy, value_base=val, weight=Decimal("0"))
+            for ccy, val in sorted(totals_by_ccy.items())
+        ]
+
+    return [
+        CurrencyExposure(currency=ccy, value_base=val, weight=val / valuation.total_value)
+        for ccy, val in sorted(totals_by_ccy.items())
+    ]

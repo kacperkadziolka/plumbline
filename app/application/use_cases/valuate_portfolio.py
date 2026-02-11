@@ -8,6 +8,8 @@ from app.core.errors import DataMissingError
 from app.domain.valuation import (
     BASE_CURRENCY,
     PortfolioValuation,
+    compute_currency_exposures,
+    compute_weights,
     valuate_portfolio,
 )
 from app.domain.valuation import PositionInput as DomainPositionInput
@@ -27,6 +29,13 @@ class ValuationPositionRow(BaseModel):
     fx_rate: Decimal
     value_local: Decimal
     value_base: Decimal
+    weight: Decimal
+
+
+class CurrencyExposureRow(BaseModel):
+    currency: str
+    value_base: Decimal
+    weight: Decimal
 
 
 class ValuationResult(BaseModel):
@@ -35,6 +44,7 @@ class ValuationResult(BaseModel):
     base_currency: str
     positions: list[ValuationPositionRow]
     total_value: Decimal
+    currency_exposures: list[CurrencyExposureRow]
 
 
 async def valuate_portfolio_for_date(
@@ -93,6 +103,7 @@ async def valuate_portfolio_for_date(
         fx_rates=fx_by_pair,
     )
 
+    weights = compute_weights(valuation)
     display_positions = [
         ValuationPositionRow(
             ticker=pv.ticker,
@@ -103,8 +114,14 @@ async def valuate_portfolio_for_date(
             fx_rate=pv.fx_rate,
             value_local=pv.value_local,
             value_base=pv.value_base,
+            weight=w,
         )
-        for pv in valuation.positions
+        for pv, w in zip(valuation.positions, weights, strict=True)
+    ]
+
+    exposures = compute_currency_exposures(valuation)
+    exposure_rows = [
+        CurrencyExposureRow(currency=exp.currency, value_base=exp.value_base, weight=exp.weight) for exp in exposures
     ]
 
     return ValuationResult(
@@ -113,4 +130,5 @@ async def valuate_portfolio_for_date(
         base_currency=valuation.base_currency,
         positions=display_positions,
         total_value=valuation.total_value,
+        currency_exposures=exposure_rows,
     )
