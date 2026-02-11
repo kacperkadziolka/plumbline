@@ -10,6 +10,7 @@ from app.infrastructure.db.repositories import (
     FxInput,
     FxRepository,
     HoldingsRepository,
+    PolicyRepository,
     PositionInput,
     PriceInput,
     PricesRepository,
@@ -581,3 +582,95 @@ async def test_get_fx_rates_for_date_returns_empty_for_empty_input(session: Asyn
     result = await repo.get_fx_rates_for_date(set(), date(2024, 1, 15))
 
     assert result == {}
+
+
+# PolicyRepository tests
+
+
+async def test_policy_save_creates_new_policy(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    policy = await repo.save("my-policy", "base_currency: EUR\nbuckets: ...", "abc123hash")
+    await session.commit()
+
+    assert policy.id is not None
+    assert policy.name == "my-policy"
+    assert policy.hash == "abc123hash"
+    assert policy.yaml_text == "base_currency: EUR\nbuckets: ..."
+    assert policy.created_at is not None
+
+
+async def test_policy_save_is_idempotent_on_duplicate_hash(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    p1 = await repo.save("my-policy", "yaml-text", "samehash")
+    await session.commit()
+
+    p2 = await repo.save("different-name", "yaml-text", "samehash")
+    await session.commit()
+
+    assert p1.id == p2.id
+
+
+async def test_policy_get_by_hash_returns_policy(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    await repo.save("my-policy", "yaml-text", "unique-hash")
+    await session.commit()
+
+    found = await repo.get_by_hash("unique-hash")
+    assert found is not None
+    assert found.name == "my-policy"
+
+
+async def test_policy_get_by_hash_returns_none_when_not_found(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    found = await repo.get_by_hash("nonexistent")
+    assert found is None
+
+
+async def test_policy_list_versions_returns_all_ordered_by_id_desc(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    await repo.save("p", "yaml1", "hash1")
+    await repo.save("p", "yaml2", "hash2")
+    await repo.save("p", "yaml3", "hash3")
+    await session.commit()
+
+    versions = await repo.list_versions()
+    assert len(versions) == 3
+    # Newest first (by id desc as fallback for same-second created_at)
+    assert versions[0].hash == "hash3"
+    assert versions[2].hash == "hash1"
+
+
+async def test_policy_list_versions_filters_by_name(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    await repo.save("alpha", "yaml1", "hash1")
+    await repo.save("beta", "yaml2", "hash2")
+    await repo.save("alpha", "yaml3", "hash3")
+    await session.commit()
+
+    alpha_versions = await repo.list_versions(name="alpha")
+    assert len(alpha_versions) == 2
+    assert all(v.name == "alpha" for v in alpha_versions)
+
+
+async def test_policy_list_versions_respects_limit(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    for i in range(5):
+        await repo.save("p", f"yaml{i}", f"hash{i}")
+    await session.commit()
+
+    versions = await repo.list_versions(limit=2)
+    assert len(versions) == 2
+
+
+async def test_policy_list_versions_returns_empty_when_none_exist(session: AsyncSession) -> None:
+    repo = PolicyRepository(session)
+
+    versions = await repo.list_versions()
+    assert versions == []

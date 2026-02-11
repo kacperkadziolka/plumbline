@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -74,3 +74,13 @@ class FxDaily(Base):
     date: Mapped[date]
     pair: Mapped[str] = mapped_column(String(7))
     rate: Mapped[Decimal]
+
+
+class Policy(Base):
+    __tablename__ = "policy"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    yaml_text: Mapped[str] = mapped_column(Text)
+    hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
