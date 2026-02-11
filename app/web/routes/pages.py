@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.use_cases import get_latest_holdings, valuate_portfolio_for_date
-from app.core.errors import ValidationError
+from app.core.errors import DataMissingError, ValidationError
 from app.infrastructure.db import get_async_db
 
 router = APIRouter(tags=["pages"])
@@ -15,8 +15,29 @@ templates = Jinja2Templates(directory="app/web/templates")
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "index.html")
+async def index(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> HTMLResponse:
+    holdings = await get_latest_holdings(db)
+    if holdings is None:
+        return templates.TemplateResponse(request, "index.html", {"state": "no_data"})
+
+    try:
+        valuation = await valuate_portfolio_for_date(date.today(), db)
+    except DataMissingError as exc:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {"state": "partial", "holdings": holdings, "error_details": exc.details},
+        )
+
+    top_holdings = sorted(valuation.positions, key=lambda p: p.weight, reverse=True)[:5]
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"state": "full", "valuation": valuation, "top_holdings": top_holdings},
+    )
 
 
 @router.get("/holdings", response_class=HTMLResponse)
