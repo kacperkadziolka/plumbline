@@ -6,8 +6,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.use_cases.import_fx_csv import import_fx_csv
 from app.application.use_cases.import_holdings_ibkr import import_holdings_ibkr
 from app.application.use_cases.import_holdings_manual import import_holdings_manual
+from app.application.use_cases.import_prices_csv import import_prices_csv
 from app.infrastructure.db import get_async_db
 
 router = APIRouter(tags=["import"])
@@ -35,6 +37,7 @@ async def upload_holdings_manual(
         request,
         "import_success.html",
         {
+            "import_type": "holdings",
             "position_count": result.position_count,
             "snapshot_id": result.snapshot_id,
             "as_of_date": result.as_of_date,
@@ -58,8 +61,51 @@ async def upload_holdings_ibkr(
         request,
         "import_success.html",
         {
+            "import_type": "holdings",
             "position_count": result.position_count,
             "snapshot_id": result.snapshot_id,
             "as_of_date": result.as_of_date,
+        },
+    )
+
+
+@router.post("/import/prices", response_class=HTMLResponse)
+async def upload_prices(
+    request: Request,
+    file: UploadFile,
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> HTMLResponse:
+    content = (await file.read()).decode("utf-8")
+
+    result = await import_prices_csv(content, db)
+    await db.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "import_success.html",
+        {
+            "import_type": "prices",
+            "row_count": result.row_count,
+        },
+    )
+
+
+@router.post("/import/fx", response_class=HTMLResponse)
+async def upload_fx(
+    request: Request,
+    file: UploadFile,
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> HTMLResponse:
+    content = (await file.read()).decode("utf-8")
+
+    result = await import_fx_csv(content, db)
+    await db.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "import_success.html",
+        {
+            "import_type": "fx",
+            "row_count": result.row_count,
         },
     )
