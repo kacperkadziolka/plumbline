@@ -206,6 +206,22 @@ class PricesRepository:
         await self._session.flush()
         return len(prices)
 
+    async def get_prices_for_date(
+        self,
+        asset_ids: set[int],
+        target_date: date,
+    ) -> dict[int, PriceDaily]:
+        """Batch-fetch closing prices for multiple assets on a single date.
+
+        Returns {asset_id: PriceDaily} for found prices. Missing assets are absent from the dict.
+        """
+        if not asset_ids:
+            return {}
+        result = await self._session.execute(
+            select(PriceDaily).where(PriceDaily.asset_id.in_(asset_ids)).where(PriceDaily.date == target_date)
+        )
+        return {row.asset_id: row for row in result.scalars().all()}
+
     async def get_prices(
         self,
         ticker: str,
@@ -272,6 +288,22 @@ class FxRepository:
 
         await self._session.flush()
         return len(rates)
+
+    async def get_fx_rates_for_date(
+        self,
+        pairs: set[str],
+        target_date: date,
+    ) -> dict[str, FxDaily]:
+        """Batch-fetch FX rates for multiple pairs on a single date.
+
+        Returns {pair: FxDaily} for found rates. Missing pairs are absent from the dict.
+        """
+        if not pairs:
+            return {}
+        result = await self._session.execute(
+            select(FxDaily).where(FxDaily.pair.in_(pairs)).where(FxDaily.date == target_date)
+        )
+        return {row.pair: row for row in result.scalars().all()}
 
     async def get_fx_rates(
         self,

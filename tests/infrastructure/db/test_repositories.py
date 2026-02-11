@@ -496,3 +496,88 @@ async def test_get_fx_rates_returns_empty_for_unknown_pair(session: AsyncSession
     result = await repo.get_fx_rates("XXX/YYY")
 
     assert result == []
+
+
+# PricesRepository — get_prices_for_date tests
+
+
+async def test_get_prices_for_date_returns_matching_prices(session: AsyncSession) -> None:
+    asset1 = Asset(ticker="AAPL", currency="USD", asset_type="equity")
+    asset2 = Asset(ticker="GOOGL", currency="USD", asset_type="equity")
+    session.add_all([asset1, asset2])
+    await session.flush()
+
+    repo = PricesRepository(session)
+    prices = [
+        PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("150.00"), currency="USD"),
+        PriceInput(ticker="GOOGL", date=date(2024, 1, 15), close=Decimal("140.00"), currency="USD"),
+        PriceInput(ticker="AAPL", date=date(2024, 1, 16), close=Decimal("151.00"), currency="USD"),
+    ]
+    await repo.upsert_prices(prices, {"AAPL": asset1, "GOOGL": asset2})
+    await session.commit()
+
+    result = await repo.get_prices_for_date({asset1.id, asset2.id}, date(2024, 1, 15))
+
+    assert len(result) == 2
+    assert result[asset1.id].close == Decimal("150.00")
+    assert result[asset2.id].close == Decimal("140.00")
+
+
+async def test_get_prices_for_date_returns_empty_for_no_match(session: AsyncSession) -> None:
+    asset = Asset(ticker="AAPL", currency="USD", asset_type="equity")
+    session.add(asset)
+    await session.flush()
+
+    repo = PricesRepository(session)
+    prices = [PriceInput(ticker="AAPL", date=date(2024, 1, 15), close=Decimal("150.00"), currency="USD")]
+    await repo.upsert_prices(prices, {"AAPL": asset})
+    await session.commit()
+
+    result = await repo.get_prices_for_date({asset.id}, date(2024, 1, 16))
+
+    assert result == {}
+
+
+async def test_get_prices_for_date_returns_empty_for_empty_input(session: AsyncSession) -> None:
+    repo = PricesRepository(session)
+    result = await repo.get_prices_for_date(set(), date(2024, 1, 15))
+
+    assert result == {}
+
+
+# FxRepository — get_fx_rates_for_date tests
+
+
+async def test_get_fx_rates_for_date_returns_matching_rates(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    rates = [
+        FxInput(date=date(2024, 1, 15), pair="USD/EUR", rate=Decimal("0.92")),
+        FxInput(date=date(2024, 1, 15), pair="GBP/EUR", rate=Decimal("1.16")),
+        FxInput(date=date(2024, 1, 16), pair="USD/EUR", rate=Decimal("0.93")),
+    ]
+    await repo.upsert_fx_rates(rates)
+    await session.commit()
+
+    result = await repo.get_fx_rates_for_date({"USD/EUR", "GBP/EUR"}, date(2024, 1, 15))
+
+    assert len(result) == 2
+    assert result["USD/EUR"].rate == Decimal("0.92")
+    assert result["GBP/EUR"].rate == Decimal("1.16")
+
+
+async def test_get_fx_rates_for_date_returns_empty_for_no_match(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    rates = [FxInput(date=date(2024, 1, 15), pair="USD/EUR", rate=Decimal("0.92"))]
+    await repo.upsert_fx_rates(rates)
+    await session.commit()
+
+    result = await repo.get_fx_rates_for_date({"USD/EUR"}, date(2024, 1, 16))
+
+    assert result == {}
+
+
+async def test_get_fx_rates_for_date_returns_empty_for_empty_input(session: AsyncSession) -> None:
+    repo = FxRepository(session)
+    result = await repo.get_fx_rates_for_date(set(), date(2024, 1, 15))
+
+    assert result == {}
