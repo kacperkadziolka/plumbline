@@ -4,7 +4,15 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import DataMissingError
-from app.domain.valuation import BASE_CURRENCY, PositionInput, valuate_portfolio
+from app.domain.valuation import (
+    BASE_CURRENCY,
+    PortfolioValuation,
+    PositionInput,
+    PositionValuation,
+    compute_currency_exposures,
+    compute_weights,
+    valuate_portfolio,
+)
 
 
 def test_single_position_in_base_currency() -> None:
@@ -137,3 +145,142 @@ def test_empty_portfolio() -> None:
 
 def test_base_currency_constant_is_eur() -> None:
     assert BASE_CURRENCY == "EUR"
+
+
+# --- helpers for weight / exposure tests ---
+
+
+def _make_valuation(
+    positions: list[tuple[str, str, Decimal]],
+    total: Decimal | None = None,
+) -> PortfolioValuation:
+    """Build a PortfolioValuation from (ticker, currency, value_base) triples."""
+    pvs = [
+        PositionValuation(
+            ticker=t,
+            currency=c,
+            qty=Decimal("1"),
+            price=v,
+            fx_rate=Decimal("1"),
+            value_local=v,
+            value_base=v,
+        )
+        for t, c, v in positions
+    ]
+    if total is None:
+        total = sum((p.value_base for p in pvs), Decimal("0"))
+    return PortfolioValuation(
+        as_of_date=date(2024, 6, 15),
+        base_currency="EUR",
+        positions=pvs,
+        total_value=total,
+    )
+
+
+# --- compute_weights tests ---
+
+
+def test_compute_weights_single_position() -> None:
+    val = _make_valuation([("A", "EUR", Decimal("500"))])
+    assert compute_weights(val) == [Decimal("1")]
+
+
+def test_compute_weights_multiple_positions() -> None:
+    val = _make_valuation(
+        [
+            ("A", "EUR", Decimal("300")),
+            ("B", "USD", Decimal("700")),
+        ]
+    )
+    weights = compute_weights(val)
+    assert weights[0] == Decimal("300") / Decimal("1000")
+    assert weights[1] == Decimal("700") / Decimal("1000")
+
+
+def test_compute_weights_sum_to_one() -> None:
+    val = _make_valuation(
+        [
+            ("A", "EUR", Decimal("250")),
+            ("B", "USD", Decimal("500")),
+            ("C", "CHF", Decimal("250")),
+        ]
+    )
+    weights = compute_weights(val)
+    assert sum(weights) == Decimal("1")
+
+
+def test_compute_weights_empty_portfolio() -> None:
+    val = _make_valuation([])
+    assert compute_weights(val) == []
+
+
+def test_compute_weights_zero_total() -> None:
+    val = _make_valuation(
+        [("A", "EUR", Decimal("0")), ("B", "USD", Decimal("0"))],
+        total=Decimal("0"),
+    )
+    assert compute_weights(val) == [Decimal("0"), Decimal("0")]
+
+
+# --- compute_currency_exposures tests ---
+
+
+def test_currency_exposure_single_currency() -> None:
+    val = _make_valuation(
+        [
+            ("A", "EUR", Decimal("300")),
+            ("B", "EUR", Decimal("700")),
+        ]
+    )
+    exposures = compute_currency_exposures(val)
+    assert len(exposures) == 1
+    assert exposures[0].currency == "EUR"
+    assert exposures[0].value_base == Decimal("1000")
+    assert exposures[0].weight == Decimal("1")
+
+
+def test_currency_exposure_mixed_currencies() -> None:
+    val = _make_valuation(
+        [
+            ("A", "USD", Decimal("600")),
+            ("B", "EUR", Decimal("400")),
+        ]
+    )
+    exposures = compute_currency_exposures(val)
+    assert len(exposures) == 2
+    eur = next(e for e in exposures if e.currency == "EUR")
+    usd = next(e for e in exposures if e.currency == "USD")
+    assert eur.value_base == Decimal("400")
+    assert eur.weight == Decimal("400") / Decimal("1000")
+    assert usd.value_base == Decimal("600")
+    assert usd.weight == Decimal("600") / Decimal("1000")
+
+
+def test_currency_exposure_sorted_by_currency() -> None:
+    val = _make_valuation(
+        [
+            ("X", "USD", Decimal("100")),
+            ("Y", "CHF", Decimal("100")),
+            ("Z", "EUR", Decimal("100")),
+        ]
+    )
+    exposures = compute_currency_exposures(val)
+    currencies = [e.currency for e in exposures]
+    assert currencies == ["CHF", "EUR", "USD"]
+
+
+def test_currency_exposure_empty_portfolio() -> None:
+    val = _make_valuation([])
+    assert compute_currency_exposures(val) == []
+
+
+def test_currency_exposure_weights_sum_to_one() -> None:
+    val = _make_valuation(
+        [
+            ("A", "USD", Decimal("333")),
+            ("B", "EUR", Decimal("444")),
+            ("C", "CHF", Decimal("223")),
+        ]
+    )
+    exposures = compute_currency_exposures(val)
+    assert sum(e.weight for e in exposures) == Decimal("1")

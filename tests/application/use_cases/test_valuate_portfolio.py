@@ -75,6 +75,15 @@ async def test_valuate_portfolio_eur_only_positions(session: AsyncSession) -> No
     for pos in result.positions:
         assert pos.fx_rate == Decimal("1")
 
+    alv = next(p for p in result.positions if p.ticker == "ALV.DE")
+    sie = next(p for p in result.positions if p.ticker == "SIE.DE")
+    assert alv.weight == Decimal("1250.00") / Decimal("2750.00")
+    assert sie.weight == Decimal("1500.00") / Decimal("2750.00")
+
+    assert len(result.currency_exposures) == 1
+    assert result.currency_exposures[0].currency == "EUR"
+    assert result.currency_exposures[0].weight == Decimal("1")
+
 
 async def test_valuate_portfolio_mixed_currencies(session: AsyncSession) -> None:
     await _create_snapshot_with_prices(
@@ -101,10 +110,17 @@ async def test_valuate_portfolio_mixed_currencies(session: AsyncSession) -> None
     aapl = next(p for p in result.positions if p.ticker == "AAPL")
     assert aapl.fx_rate == Decimal("0.90")
     assert aapl.value_base == Decimal("1800.000")
+    assert aapl.weight == Decimal("1800.000") / Decimal("2550.000")
 
     sie = next(p for p in result.positions if p.ticker == "SIE.DE")
     assert sie.fx_rate == Decimal("1")
     assert sie.value_base == Decimal("750.00")
+    assert sie.weight == Decimal("750.00") / Decimal("2550.000")
+
+    exposures = {e.currency: e for e in result.currency_exposures}
+    assert sorted(exposures.keys()) == ["EUR", "USD"]
+    assert exposures["USD"].value_base == Decimal("1800.000")
+    assert exposures["EUR"].value_base == Decimal("750.00")
 
 
 async def test_valuate_portfolio_missing_price_error_specifies_ticker(session: AsyncSession) -> None:
@@ -158,3 +174,6 @@ async def test_valuate_portfolio_result_sorted_by_ticker(session: AsyncSession) 
 
     tickers = [p.ticker for p in result.positions]
     assert tickers == ["AAA", "MMM", "ZZZ"]
+
+    currencies = [e.currency for e in result.currency_exposures]
+    assert currencies == sorted(currencies)
