@@ -69,3 +69,4 @@ def test_dashboard_navigation_links(client: TestClient) -> None:
     assert 'href="/holdings"' in response.text
     assert 'href="/valuation"' in response.text
     assert 'href="/import"' in response.text
+    assert 'href="/policy"' in response.text

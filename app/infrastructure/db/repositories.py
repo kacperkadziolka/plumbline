@@ -343,6 +343,11 @@ class PolicyRepository:
         await self._session.flush()
         return policy
 
+    async def get_by_id(self, policy_id: int) -> Policy | None:
+        """Get a policy by its primary key, or None if not found."""
+        result = await self._session.execute(select(Policy).where(Policy.id == policy_id))
+        return result.scalar_one_or_none()
+
     async def get_by_hash(self, policy_hash: str) -> Policy | None:
         """Get a policy by its content hash, or None if not found."""
         result = await self._session.execute(select(Policy).where(Policy.hash == policy_hash))
