@@ -22,7 +22,7 @@ def client() -> Generator[TestClient, Any]:
 
         async def _clean() -> None:
             async with engine.begin() as conn:
-                for table in ("position", "holdings_snapshot", "prices_daily", "fx_daily"):
+                for table in ("position", "holdings_snapshot", "prices_daily", "fx_daily", "policy"):
                     await conn.execute(text(f"DELETE FROM {table}"))
 
         asyncio.get_event_loop_policy().new_event_loop().run_until_complete(_clean())
