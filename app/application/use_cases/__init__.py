@@ -1,6 +1,12 @@
 from app.application.use_cases.export_proposal_csv import (
     export_proposal_csv,
 )
+from app.application.use_cases.generate_proposal import (
+    GenerateProposalResult,
+    deserialize_allocation_result,
+    generate_proposal,
+    serialize_allocation_result,
+)
 from app.application.use_cases.get_latest_holdings import (
     LatestHoldingsResult,
     get_latest_holdings,
@@ -50,6 +56,7 @@ from app.application.use_cases.valuate_portfolio import (
 )
 
 __all__ = [
+    "GenerateProposalResult",
     "GetPolicyResult",
     "GetProposalResult",
     "ImportFxResult",
@@ -64,7 +71,9 @@ __all__ = [
     "SaveProposalResult",
     "TradeRow",
     "ValuationResult",
+    "deserialize_allocation_result",
     "export_proposal_csv",
+    "generate_proposal",
     "get_latest_holdings",
     "get_policy",
     "get_proposal",
@@ -75,5 +84,6 @@ __all__ = [
     "list_proposals",
     "save_policy",
     "save_proposal",
+    "serialize_allocation_result",
     "valuate_portfolio_for_date",
 ]
