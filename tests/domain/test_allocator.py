@@ -458,3 +458,273 @@ def test_max_weight_redistributes_excess() -> None:
     assert a.buy_amount <= Decimal("400.01")
     assert b.buy_amount <= Decimal("400.01")
     assert result.total_allocated + result.unallocated == amount
+
+
+# ---------------------------------------------------------------------------
+# G. Realistic scenarios with hand-calculated expected values
+#
+# Each test documents the full arithmetic trace so a human can verify
+# the algorithm step-by-step with pen and paper.
+# ---------------------------------------------------------------------------
+
+
+def test_scenario_classic_3etf_first_contribution() -> None:
+    """Classic 3-ETF portfolio, first contribution into empty portfolio.
+
+    Policy: IWDA.AS=60%, EIMI.AS=25%, IUSN.AS=15%, min_trade=50
+    State: empty (total=0)
+    Contribution: 1000 EUR
+
+    post_total = 0 + 1000 = 1000
+    current_weights: all 0
+    gaps: IWDA=0.60, EIMI=0.25, IUSN=0.15 (total=1.0)
+    raw: IWDA=600, EIMI=250, IUSN=150
+    No clamping (max=1.0). All above min_trade=50.
+    """
+    policy = _make_policy(
+        core_targets={
+            "IWDA.AS": Decimal("0.60"),
+            "EIMI.AS": Decimal("0.25"),
+            "IUSN.AS": Decimal("0.15"),
+        },
+        min_trade_value=Decimal("50"),
+    )
+    state = _make_valuation([])
+
+    result = allocate_contribution(state, policy, Decimal("1000"), "EUR", include_satellite=False)
+
+    iwda = next(t for t in result.trades if t.ticker == "IWDA.AS")
+    eimi = next(t for t in result.trades if t.ticker == "EIMI.AS")
+    iusn = next(t for t in result.trades if t.ticker == "IUSN.AS")
+
+    assert iwda.buy_amount == Decimal("600.00")
+    assert eimi.buy_amount == Decimal("250.00")
+    assert iusn.buy_amount == Decimal("150.00")
+    assert result.unallocated == Decimal("0")
+    assert result.total_allocated == Decimal("1000.00")
+
+    # Verify rationale fields
+    assert iwda.current_weight == Decimal("0")
+    assert iwda.target_weight == Decimal("0.60")
+    assert iwda.gap == Decimal("0.60")
+
+
+def test_scenario_drifted_portfolio_rebalancing() -> None:
+    """Drifted portfolio where contribution fills the gaps exactly.
+
+    Policy: A=50%, B=30%, C=20%
+    State: A=6000, B=2000, C=2000 (total=10000)
+    Contribution: 2000 EUR
+
+    post_total = 12000
+    current_weights: A=6000/12000=0.50, B=2000/12000=1/6, C=2000/12000=1/6
+    gaps: A=0 (skip), B=0.30-1/6=2/15, C=0.20-1/6=1/30
+    total_gap = 2/15 + 1/30 = 5/30 = 1/6
+    raw: B = 2000*(2/15)/(1/6) = 2000*4/5 = 1600
+         C = 2000*(1/30)/(1/6) = 2000*1/5 = 400
+
+    Final weights: A=6000/12000=50%, B=3600/12000=30%, C=2400/12000=20% ✓
+    """
+    policy = _make_policy(
+        core_targets={"A": Decimal("0.50"), "B": Decimal("0.30"), "C": Decimal("0.20")},
+    )
+    state = _make_valuation(
+        [
+            ("A", "EUR", Decimal("6000")),
+            ("B", "EUR", Decimal("2000")),
+            ("C", "EUR", Decimal("2000")),
+        ]
+    )
+
+    result = allocate_contribution(state, policy, Decimal("2000"), "EUR", include_satellite=False)
+
+    # A is at target weight -> no trade for A
+    a_trade = next((t for t in result.trades if t.ticker == "A"), None)
+    assert a_trade is None
+
+    b = next(t for t in result.trades if t.ticker == "B")
+    c = next(t for t in result.trades if t.ticker == "C")
+
+    assert b.buy_amount == Decimal("1600.00")
+    assert c.buy_amount == Decimal("400.00")
+    assert result.total_allocated == Decimal("2000.00")
+    assert result.unallocated == Decimal("0")
+
+    # Verify final portfolio weights
+    final_a = Decimal("6000") / Decimal("12000")
+    final_b = (Decimal("2000") + b.buy_amount) / Decimal("12000")
+    final_c = (Decimal("2000") + c.buy_amount) / Decimal("12000")
+    assert final_a == Decimal("0.50")
+    assert final_b == Decimal("0.30")
+    assert final_c == Decimal("0.20")
+
+
+def test_scenario_max_weight_clamp_exact() -> None:
+    """Max weight clamp where both positions hit the cap exactly.
+
+    Policy: A=70%, B=30%, max_weight=0.50
+    State: empty (total=0)
+    Contribution: 1000 EUR
+
+    post_total = 1000
+    gaps: A=0.70, B=0.30 (total=1.0)
+    raw: A=700, B=300
+    clamp iter 1: A max_buy=500, A clamped to 500, excess=200
+      redistribute 200 to B (only eligible): B headroom=500-300=200, B gets 200 -> B=500
+    clamp iter 2: excess=0, done
+
+    Final: A=500/1000=50%, B=500/1000=50%
+    """
+    policy = _make_policy(
+        core_targets={"A": Decimal("0.70"), "B": Decimal("0.30")},
+        max_position_weight=Decimal("0.50"),
+    )
+    state = _make_valuation([])
+
+    result = allocate_contribution(state, policy, Decimal("1000"), "EUR", include_satellite=False)
+
+    a = next(t for t in result.trades if t.ticker == "A")
+    b = next(t for t in result.trades if t.ticker == "B")
+
+    assert a.buy_amount == Decimal("500.00")
+    assert b.buy_amount == Decimal("500.00")
+    assert result.total_allocated == Decimal("1000.00")
+    assert result.unallocated == Decimal("0")
+
+
+def test_scenario_min_trade_filtering() -> None:
+    """Min-trade filter drops two small trades, redistributes to the big one.
+
+    Policy: A=80%, B=15%, C=5%, min_trade=100
+    State: empty (total=0)
+    Contribution: 500 EUR
+
+    post_total = 500
+    gaps: A=0.80, B=0.15, C=0.05 (total=1.0)
+    raw: A=400, B=75, C=25
+    min_trade pass 1: below={B:75, C:25}, both dropped. Reclaimed=100.
+      remaining={A:400}. A gets 400+100=500.
+    min_trade pass 2: no below-threshold trades. Done.
+    """
+    policy = _make_policy(
+        core_targets={"A": Decimal("0.80"), "B": Decimal("0.15"), "C": Decimal("0.05")},
+        min_trade_value=Decimal("100"),
+    )
+    state = _make_valuation([])
+
+    result = allocate_contribution(state, policy, Decimal("500"), "EUR", include_satellite=False)
+
+    assert len(result.trades) == 1
+    a = result.trades[0]
+    assert a.ticker == "A"
+    assert a.buy_amount == Decimal("500.00")
+    assert result.total_allocated == Decimal("500.00")
+    assert result.unallocated == Decimal("0")
+
+
+def test_scenario_satellite_overweight_core() -> None:
+    """Satellite gets all allocation when core tickers are overweight.
+
+    Policy: core={X=60%, Y=40%}, satellite={Z=100%}
+    State: X=2000, Y=1000, Z=0 (total=3000)
+    Contribution: 1500 EUR
+
+    Renormalized targets: total=2.0 -> X=0.30, Y=0.20, Z=0.50
+    post_total = 4500
+    current_weights: X=2000/4500=4/9≈0.444, Y=1000/4500=2/9≈0.222, Z=0
+    gaps: X=0.30-4/9<0 (skip), Y=0.20-2/9<0 (skip), Z=0.50-0=0.50
+    Only Z has positive gap. Z gets all 1500.
+    """
+    policy = _make_policy(
+        core_targets={"X": Decimal("0.60"), "Y": Decimal("0.40")},
+        satellite_targets={"Z": Decimal("1")},
+    )
+    state = _make_valuation(
+        [
+            ("X", "EUR", Decimal("2000")),
+            ("Y", "EUR", Decimal("1000")),
+            ("Z", "EUR", Decimal("0")),
+        ]
+    )
+
+    result = allocate_contribution(state, policy, Decimal("1500"), "EUR", include_satellite=True)
+
+    assert len(result.trades) == 1
+    z = result.trades[0]
+    assert z.ticker == "Z"
+    assert z.buy_amount == Decimal("1500.00")
+    assert result.total_allocated == Decimal("1500.00")
+    assert result.unallocated == Decimal("0")
+
+
+def test_scenario_combined_constraints() -> None:
+    """Both max_weight and min_trade active, with an overweight position.
+
+    Policy: A=60%, B=25%, C=15%, min_trade=50, max_weight=0.40
+    State: A=3500, B=500, C=0 (total=4000)
+    Contribution: 1000 EUR
+
+    post_total = 5000, max per position = 2000
+    current_weights: A=3500/5000=0.70, B=500/5000=0.10, C=0
+    gaps: A=0.60-0.70<0 (skip), B=0.25-0.10=0.15, C=0.15-0=0.15
+    total_gap = 0.30
+    raw: B=1000*0.15/0.30=500, C=1000*0.15/0.30=500
+    clamp: B headroom=2000-500=1500 (ok), C headroom=2000-0=2000 (ok)
+    min_trade: B=500>50 ✓, C=500>50 ✓
+    """
+    policy = _make_policy(
+        core_targets={"A": Decimal("0.60"), "B": Decimal("0.25"), "C": Decimal("0.15")},
+        min_trade_value=Decimal("50"),
+        max_position_weight=Decimal("0.40"),
+    )
+    state = _make_valuation(
+        [
+            ("A", "EUR", Decimal("3500")),
+            ("B", "EUR", Decimal("500")),
+            ("C", "EUR", Decimal("0")),
+        ]
+    )
+
+    result = allocate_contribution(state, policy, Decimal("1000"), "EUR", include_satellite=False)
+
+    # A is overweight -> no trade
+    a_trade = next((t for t in result.trades if t.ticker == "A"), None)
+    assert a_trade is None
+
+    b = next(t for t in result.trades if t.ticker == "B")
+    c = next(t for t in result.trades if t.ticker == "C")
+
+    assert b.buy_amount == Decimal("500.00")
+    assert c.buy_amount == Decimal("500.00")
+    assert result.total_allocated == Decimal("1000.00")
+    assert result.unallocated == Decimal("0")
+
+
+def test_scenario_odd_cent_precision() -> None:
+    """Odd-cent contribution amount to exercise Decimal quantization.
+
+    Policy: A=60%, B=40%
+    State: empty (total=0)
+    Contribution: 1333.37 EUR
+
+    post_total = 1333.37
+    gaps: A=0.60, B=0.40 (total=1.0)
+    raw: A = 1333.37 * 0.60 = 800.022
+         B = 1333.37 * 0.40 = 533.348
+    quantized (ROUND_HALF_EVEN): A=800.02, B=533.35
+    total_allocated = 1333.37
+    """
+    policy = _make_policy(
+        core_targets={"A": Decimal("0.60"), "B": Decimal("0.40")},
+    )
+    state = _make_valuation([])
+
+    result = allocate_contribution(state, policy, Decimal("1333.37"), "EUR", include_satellite=False)
+
+    a = next(t for t in result.trades if t.ticker == "A")
+    b = next(t for t in result.trades if t.ticker == "B")
+
+    assert a.buy_amount == Decimal("800.02")
+    assert b.buy_amount == Decimal("533.35")
+    assert result.total_allocated == Decimal("1333.37")
+    assert result.unallocated == Decimal("0.00")
