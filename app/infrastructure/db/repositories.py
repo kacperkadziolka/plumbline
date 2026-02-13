@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import DataMissingError
-from app.infrastructure.db.models import Asset, FxDaily, HoldingsSnapshot, Policy, Position, PriceDaily
+from app.infrastructure.db.models import Asset, FxDaily, HoldingsSnapshot, Policy, Position, PriceDaily, Proposal
 
 
 class PositionInput(BaseModel):
@@ -362,4 +362,35 @@ class PolicyRepository:
         if name is not None:
             query = query.where(Policy.name == name)
         result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+
+class ProposalRepository:
+    """Repository for proposal persistence operations."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, policy_id: int, amount: Decimal, currency: str, result_json: str) -> Proposal:
+        """Save a proposal. Returns the created row."""
+        proposal = Proposal(
+            policy_id=policy_id,
+            amount=amount,
+            currency=currency,
+            result_json=result_json,
+        )
+        self._session.add(proposal)
+        await self._session.flush()
+        return proposal
+
+    async def get_by_id(self, proposal_id: int) -> Proposal | None:
+        """Get a proposal by its primary key, or None if not found."""
+        result = await self._session.execute(select(Proposal).where(Proposal.id == proposal_id))
+        return result.scalar_one_or_none()
+
+    async def list_proposals(self, limit: int = 100) -> list[Proposal]:
+        """List proposals ordered by created_at descending."""
+        result = await self._session.execute(
+            select(Proposal).order_by(Proposal.created_at.desc(), Proposal.id.desc()).limit(limit)
+        )
         return list(result.scalars().all())

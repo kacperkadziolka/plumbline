@@ -1,5 +1,15 @@
 from app.infrastructure.db.db import get_async_db, init_db
-from app.infrastructure.db.models import Asset, Base, FxDaily, HoldingsSnapshot, Meta, Policy, Position, PriceDaily
+from app.infrastructure.db.models import (
+    Asset,
+    Base,
+    FxDaily,
+    HoldingsSnapshot,
+    Meta,
+    Policy,
+    Position,
+    PriceDaily,
+    Proposal,
+)
 from app.infrastructure.db.repositories import (
     FxInput,
     FxRepository,
@@ -8,6 +18,7 @@ from app.infrastructure.db.repositories import (
     PositionInput,
     PriceInput,
     PricesRepository,
+    ProposalRepository,
 )
 
 __all__ = [
@@ -26,6 +37,8 @@ __all__ = [
     "PriceDaily",
     "PriceInput",
     "PricesRepository",
+    "Proposal",
+    "ProposalRepository",
     "get_async_db",
     "init_db",
 ]

@@ -84,3 +84,16 @@ class Policy(Base):
     yaml_text: Mapped[str] = mapped_column(Text)
     hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Proposal(Base):
+    __tablename__ = "proposal"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    policy_id: Mapped[int] = mapped_column(ForeignKey("policy.id"))
+    amount: Mapped[Decimal]
+    currency: Mapped[str] = mapped_column(String(3))
+    result_json: Mapped[str] = mapped_column(Text)
+
+    policy: Mapped["Policy"] = relationship()
