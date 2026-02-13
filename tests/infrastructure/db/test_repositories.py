@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DataMissingError
-from app.infrastructure.db.models import Asset
+from app.infrastructure.db.models import Asset, Policy
 from app.infrastructure.db.repositories import (
     FxInput,
     FxRepository,
@@ -14,6 +14,7 @@ from app.infrastructure.db.repositories import (
     PositionInput,
     PriceInput,
     PricesRepository,
+    ProposalRepository,
 )
 
 # get_or_create_asset tests
@@ -674,3 +675,83 @@ async def test_policy_list_versions_returns_empty_when_none_exist(session: Async
 
     versions = await repo.list_versions()
     assert versions == []
+
+
+# ProposalRepository tests
+
+
+async def _create_policy(session: AsyncSession) -> Policy:
+    """Helper to create a policy for proposal FK references."""
+    repo = PolicyRepository(session)
+    policy = await repo.save("test-policy", "base_currency: EUR\nbuckets: ...", "testhash123")
+    await session.flush()
+    return policy
+
+
+async def test_proposal_save_creates_new_proposal(session: AsyncSession) -> None:
+    policy = await _create_policy(session)
+    repo = ProposalRepository(session)
+
+    proposal = await repo.save(policy.id, Decimal("1000.00"), "EUR", '{"trades": []}')
+    await session.commit()
+
+    assert proposal.id is not None
+    assert proposal.policy_id == policy.id
+    assert proposal.amount == Decimal("1000.00")
+    assert proposal.currency == "EUR"
+    assert proposal.result_json == '{"trades": []}'
+    assert proposal.created_at is not None
+
+
+async def test_proposal_get_by_id_returns_proposal(session: AsyncSession) -> None:
+    policy = await _create_policy(session)
+    repo = ProposalRepository(session)
+
+    created = await repo.save(policy.id, Decimal("500.00"), "EUR", '{"trades": []}')
+    await session.commit()
+
+    found = await repo.get_by_id(created.id)
+    assert found is not None
+    assert found.id == created.id
+    assert found.amount == Decimal("500.00")
+
+
+async def test_proposal_get_by_id_returns_none_when_not_found(session: AsyncSession) -> None:
+    repo = ProposalRepository(session)
+
+    found = await repo.get_by_id(99999)
+    assert found is None
+
+
+async def test_proposal_list_proposals_ordered_by_id_desc(session: AsyncSession) -> None:
+    policy = await _create_policy(session)
+    repo = ProposalRepository(session)
+
+    await repo.save(policy.id, Decimal("100"), "EUR", '{"n": 1}')
+    await repo.save(policy.id, Decimal("200"), "EUR", '{"n": 2}')
+    await repo.save(policy.id, Decimal("300"), "EUR", '{"n": 3}')
+    await session.commit()
+
+    proposals = await repo.list_proposals()
+    assert len(proposals) == 3
+    amounts = [p.amount for p in proposals]
+    assert amounts == [Decimal("300"), Decimal("200"), Decimal("100")]
+
+
+async def test_proposal_list_proposals_respects_limit(session: AsyncSession) -> None:
+    policy = await _create_policy(session)
+    repo = ProposalRepository(session)
+
+    for i in range(5):
+        await repo.save(policy.id, Decimal(str(i * 100)), "EUR", f'{{"n": {i}}}')
+    await session.commit()
+
+    proposals = await repo.list_proposals(limit=2)
+    assert len(proposals) == 2
+
+
+async def test_proposal_list_proposals_returns_empty_when_none_exist(session: AsyncSession) -> None:
+    repo = ProposalRepository(session)
+
+    proposals = await repo.list_proposals()
+    assert proposals == []
