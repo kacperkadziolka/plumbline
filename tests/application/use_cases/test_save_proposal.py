@@ -79,3 +79,42 @@ async def test_save_proposal_stores_valid_json(session: AsyncSession) -> None:
     # Verify Decimal precision preserved as strings
     trade = data["trades"][0]
     assert Decimal(trade["buy_amount"]) == Decimal("600.00")
+
+
+async def test_save_proposal_with_empty_trades(session: AsyncSession) -> None:
+    policy_repo = PolicyRepository(session)
+    policy = await policy_repo.save("test", VALID_YAML, "somehash3")
+    await session.flush()
+
+    empty_result = AllocationResult(
+        trades=[],
+        total_allocated=Decimal("0"),
+        unallocated=Decimal("1000.00"),
+        policy_hash="empty_hash",
+    )
+
+    result = await save_proposal(policy.id, Decimal("1000.00"), "EUR", empty_result, session)
+    await session.commit()
+
+    # Round-trip: verify get_proposal deserializes empty trades correctly
+    from app.application.use_cases.get_proposal import get_proposal
+
+    fetched = await get_proposal(result.proposal_id, session)
+    assert fetched.trades == []
+    assert fetched.total_allocated == Decimal("0")
+    assert fetched.unallocated == Decimal("1000.00")
+
+
+async def test_save_proposal_multiple_for_same_policy(session: AsyncSession) -> None:
+    policy_repo = PolicyRepository(session)
+    policy = await policy_repo.save("test", VALID_YAML, "somehash4")
+    await session.flush()
+
+    r1 = await save_proposal(policy.id, Decimal("500.00"), "EUR", _make_allocation_result(), session)
+    r2 = await save_proposal(policy.id, Decimal("1500.00"), "EUR", _make_allocation_result(), session)
+    await session.commit()
+
+    assert r1.proposal_id != r2.proposal_id
+    assert r1.policy_id == r2.policy_id == policy.id
+    assert r1.amount == Decimal("500.00")
+    assert r2.amount == Decimal("1500.00")

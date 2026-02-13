@@ -48,3 +48,20 @@ async def test_list_proposals_returns_empty_when_none_exist(session: AsyncSessio
 
     assert result.count == 0
     assert result.proposals == []
+
+
+async def test_list_proposals_ordered_newest_first(session: AsyncSession) -> None:
+    policy_repo = PolicyRepository(session)
+    policy = await policy_repo.save("test", VALID_YAML, "hash2")
+    await session.flush()
+
+    await save_proposal(policy.id, Decimal("100"), "EUR", _make_allocation_result(Decimal("100")), session)
+    await save_proposal(policy.id, Decimal("200"), "EUR", _make_allocation_result(Decimal("200")), session)
+    await session.commit()
+
+    result = await list_proposals(session)
+
+    assert result.count == 2
+    # Newest (200) should come first
+    amounts = [p.amount for p in result.proposals]
+    assert amounts == [Decimal("200"), Decimal("100")]
