@@ -208,3 +208,4 @@ __marimo__/
 
 # Plumbline
 plumbline.db
+data/reports/proposals/*.html

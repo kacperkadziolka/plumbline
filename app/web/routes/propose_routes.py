@@ -11,6 +11,7 @@ from app.application.use_cases import (
     generate_proposal,
     list_policies,
     save_proposal,
+    save_proposal_html,
     serialize_allocation_result,
 )
 from app.core.errors import DataMissingError, PlumblineError, ValidationError
@@ -140,6 +141,8 @@ async def save_proposal_action(
     allocation_result = deserialize_allocation_result(allocation_json)
     saved = await save_proposal(policy_id, Decimal(amount), currency, allocation_result, db)
     await db.commit()
+
+    await save_proposal_html(saved.proposal_id, db)
 
     return await _render_form(
         request,
