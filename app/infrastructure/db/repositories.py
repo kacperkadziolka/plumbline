@@ -8,7 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import DataMissingError
-from app.infrastructure.db.models import Asset, FxDaily, HoldingsSnapshot, Policy, Position, PriceDaily, Proposal
+from app.infrastructure.db.models import (
+    Asset,
+    BacktestRun,
+    FxDaily,
+    HoldingsSnapshot,
+    Policy,
+    Position,
+    PriceDaily,
+    Proposal,
+)
 
 
 class PositionInput(BaseModel):
@@ -393,4 +402,55 @@ class ProposalRepository:
         result = await self._session.execute(
             select(Proposal).order_by(Proposal.created_at.desc(), Proposal.id.desc()).limit(limit)
         )
+        return list(result.scalars().all())
+
+
+class BacktestRunRepository:
+    """Repository for backtest run persistence operations."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(
+        self,
+        policy_id: int,
+        backtest_yaml: str,
+        config_hash: str,
+        policy_hash: str,
+        curve_hash: str,
+        start_date: date,
+        end_date: date,
+        metrics_json: str,
+        curve_json: str,
+    ) -> BacktestRun:
+        """Save a backtest run. Returns the created row."""
+        run = BacktestRun(
+            policy_id=policy_id,
+            backtest_yaml=backtest_yaml,
+            config_hash=config_hash,
+            policy_hash=policy_hash,
+            curve_hash=curve_hash,
+            start_date=start_date,
+            end_date=end_date,
+            metrics_json=metrics_json,
+            curve_json=curve_json,
+        )
+        self._session.add(run)
+        await self._session.flush()
+        return run
+
+    async def get_by_id(self, run_id: int) -> BacktestRun | None:
+        """Get a backtest run by its primary key, or None if not found."""
+        result = await self._session.execute(select(BacktestRun).where(BacktestRun.id == run_id))
+        return result.scalar_one_or_none()
+
+    async def list_runs(self, policy_id: int | None = None, limit: int = 100) -> list[BacktestRun]:
+        """List backtest runs ordered by created_at descending.
+
+        If policy_id is provided, filters to only that policy.
+        """
+        query = select(BacktestRun).order_by(BacktestRun.created_at.desc(), BacktestRun.id.desc()).limit(limit)
+        if policy_id is not None:
+            query = query.where(BacktestRun.policy_id == policy_id)
+        result = await self._session.execute(query)
         return list(result.scalars().all())

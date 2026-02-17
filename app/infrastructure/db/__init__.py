@@ -1,6 +1,7 @@
 from app.infrastructure.db.db import get_async_db, init_db
 from app.infrastructure.db.models import (
     Asset,
+    BacktestRun,
     Base,
     FxDaily,
     HoldingsSnapshot,
@@ -11,6 +12,7 @@ from app.infrastructure.db.models import (
     Proposal,
 )
 from app.infrastructure.db.repositories import (
+    BacktestRunRepository,
     FxInput,
     FxRepository,
     HoldingsRepository,
@@ -23,6 +25,8 @@ from app.infrastructure.db.repositories import (
 
 __all__ = [
     "Asset",
+    "BacktestRun",
+    "BacktestRunRepository",
     "Base",
     "FxDaily",
     "FxInput",

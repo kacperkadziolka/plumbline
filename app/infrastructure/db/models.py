@@ -97,3 +97,21 @@ class Proposal(Base):
     result_json: Mapped[str] = mapped_column(Text)
 
     policy: Mapped["Policy"] = relationship()
+
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_run"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    policy_id: Mapped[int] = mapped_column(ForeignKey("policy.id"))
+    backtest_yaml: Mapped[str] = mapped_column(Text)
+    config_hash: Mapped[str] = mapped_column(String(64))
+    policy_hash: Mapped[str] = mapped_column(String(64))
+    curve_hash: Mapped[str] = mapped_column(String(64))
+    start_date: Mapped[date]
+    end_date: Mapped[date]
+    metrics_json: Mapped[str] = mapped_column(Text)
+    curve_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    policy: Mapped["Policy"] = relationship()
