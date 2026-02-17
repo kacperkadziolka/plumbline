@@ -652,6 +652,19 @@ def test_scenario_two_eur_tickers_single_contribution():
     assert result.metrics.max_drawdown == expected_dd
     assert result.metrics.total_costs == D("0")
 
+    # Turnover: traded 1000 / avg equity = (1000+1044+928)/3
+    avg_eq = (D("1000") + D("1044") + D("928")) / 3
+    assert abs(result.metrics.turnover - D("1000") / avg_eq) < D("0.0001")
+
+    # Volatility: computed (3 days, 2 return observations)
+    assert result.metrics.annualized_volatility is not None
+    assert result.metrics.annualized_volatility > D("0")
+
+    # cumulative_traded_value only set on day 1
+    assert row1.cumulative_traded_value == D("1000")
+    assert row2.cumulative_traded_value == D("1000")
+    assert row3.cumulative_traded_value == D("1000")
+
 
 def test_scenario_with_commission_costs():
     """Commission of 3 EUR per trade on 2 trades = 6 EUR total.
@@ -723,3 +736,232 @@ def test_scenario_fx_ticker_with_spread():
     assert row.cumulative_costs == D("4.5")
     # Positions: 99.5 shares × 10 USD × 0.90 EUR/USD = 895.50 EUR
     assert row.positions_value == D("895.50")
+
+
+# ---------------------------------------------------------------------------
+# I. Volatility
+# ---------------------------------------------------------------------------
+
+
+def test_volatility_none_for_single_day():
+    """Volatility is None when there's only 1 day (< 2 return observations)."""
+    day1 = date(2024, 1, 15)
+    prices = {day1: {"AAA": D("100"), "BBB": D("100")}}
+    schedule = [ScheduledContribution(date=day1, amount=D("1000"), currency="EUR")]
+
+    sim_input = _make_simple_input(prices=prices, schedule=schedule)
+    result = run_simulation(sim_input)
+
+    assert result.metrics.annualized_volatility is None
+
+
+def test_volatility_none_for_two_days_pre_contribution():
+    """Volatility is None when equity is zero on all but last day (< 2 observations)."""
+    day1 = date(2024, 1, 15)
+    day2 = date(2024, 1, 16)
+
+    schedule = [ScheduledContribution(date=day2, amount=D("1000"), currency="EUR")]
+    prices = {
+        day1: {"AAA": D("100"), "BBB": D("100")},
+        day2: {"AAA": D("100"), "BBB": D("100")},
+    }
+
+    sim_input = _make_simple_input(schedule=schedule, prices=prices)
+    result = run_simulation(sim_input)
+
+    # Day 1: equity=0, Day 2: equity=1000. Only 1 return can be computed (day1→day2),
+    # but prev_equity=0 so it's skipped. Result: 0 observations → None.
+    assert result.metrics.annualized_volatility is None
+
+
+def test_volatility_zero_for_flat_prices():
+    """Flat prices with a single contribution on day 1 → vol = 0."""
+    sim_input = _make_simple_input()  # 3 days, flat prices at 100
+    result = run_simulation(sim_input)
+
+    # Daily returns are all 0 → stdev = 0 → vol = 0
+    assert result.metrics.annualized_volatility == D("0")
+
+
+def test_volatility_positive_for_varying_prices():
+    """Varying prices produce positive volatility."""
+    day1 = date(2024, 1, 15)
+    day2 = date(2024, 1, 16)
+    day3 = date(2024, 1, 17)
+
+    prices = {
+        day1: {"AAA": D("100"), "BBB": D("100")},
+        day2: {"AAA": D("110"), "BBB": D("90")},
+        day3: {"AAA": D("105"), "BBB": D("95")},
+    }
+
+    sim_input = _make_simple_input(prices=prices)
+    result = run_simulation(sim_input)
+
+    assert result.metrics.annualized_volatility is not None
+    assert result.metrics.annualized_volatility > D("0")
+
+
+def test_volatility_adjusts_for_contributions():
+    """TWR adjustment removes contribution effect from volatility.
+
+    Single-ticker portfolio eliminates reallocation composition effects,
+    so both scenarios should produce the same volatility despite the
+    second one having an additional contribution.
+    """
+    day1 = date(2024, 1, 15)
+    day2 = date(2024, 1, 16)
+    day3 = date(2024, 1, 17)
+
+    policy = _make_policy(core_targets={"AAA": D("1")})
+    ticker_info = _make_ticker_info(("AAA", "EUR"))
+    prices = {
+        day1: {"AAA": D("100")},
+        day2: {"AAA": D("110")},
+        day3: {"AAA": D("105")},
+    }
+
+    # Scenario A: single contribution
+    schedule_a = [ScheduledContribution(date=day1, amount=D("1000"), currency="EUR")]
+    result_a = run_simulation(
+        _make_simple_input(policy=policy, ticker_info=ticker_info, prices=prices, schedule=schedule_a)
+    )
+
+    # Scenario B: two contributions (day 1 + day 2)
+    schedule_b = [
+        ScheduledContribution(date=day1, amount=D("1000"), currency="EUR"),
+        ScheduledContribution(date=day2, amount=D("500"), currency="EUR"),
+    ]
+    result_b = run_simulation(
+        _make_simple_input(policy=policy, ticker_info=ticker_info, prices=prices, schedule=schedule_b)
+    )
+
+    assert result_a.metrics.annualized_volatility is not None
+    assert result_b.metrics.annualized_volatility is not None
+
+    # With TWR adjustment and single-ticker, the price-driven returns are identical
+    # despite the extra contribution in scenario B.
+    assert abs(result_a.metrics.annualized_volatility - result_b.metrics.annualized_volatility) < D("0.01")
+
+
+def test_volatility_hand_calculated():
+    """Verify volatility against hand-calculated values.
+
+    Day 1: contribute 1000, buy at 50/25 → equity = 1000
+    Day 2: AAA=55, BBB=24 → equity = 12*55 + 16*24 = 660+384 = 1044
+    Day 3: AAA=48, BBB=22 → equity = 12*48 + 16*22 = 576+352 = 928
+
+    Daily returns (no contributions on days 2,3):
+      r1 = (1044 - 1000) / 1000 = 0.044
+      r2 = (928 - 1044) / 1044 = -116/1044
+
+    mean = (0.044 + (-116/1044)) / 2
+    variance = ((r1-mean)^2 + (r2-mean)^2) / 1  (sample variance, n-1=1)
+    stdev = sqrt(variance)
+    annualized_vol = stdev * sqrt(252)
+    """
+    import math
+
+    day1 = date(2024, 1, 15)
+    day2 = date(2024, 1, 16)
+    day3 = date(2024, 1, 17)
+
+    prices = {
+        day1: {"AAA": D("50"), "BBB": D("25")},
+        day2: {"AAA": D("55"), "BBB": D("24")},
+        day3: {"AAA": D("48"), "BBB": D("22")},
+    }
+    schedule = [ScheduledContribution(date=day1, amount=D("1000"), currency="EUR")]
+
+    sim_input = _make_simple_input(prices=prices, schedule=schedule)
+    result = run_simulation(sim_input)
+
+    r1 = D("44") / D("1000")  # 0.044
+    r2 = D("-116") / D("1044")
+    mean = (r1 + r2) / 2
+    var = ((r1 - mean) ** 2 + (r2 - mean) ** 2) / 1
+    expected_vol = D(str(math.sqrt(float(var)))) * D(str(math.sqrt(252)))
+
+    assert result.metrics.annualized_volatility is not None
+    assert abs(result.metrics.annualized_volatility - expected_vol) < D("0.0001")
+
+
+# ---------------------------------------------------------------------------
+# J. Turnover
+# ---------------------------------------------------------------------------
+
+
+def test_turnover_single_contribution_flat_prices():
+    """Single contribution of 1000 EUR, flat prices at 100.
+
+    total_traded_value = 1000 (full contribution allocated)
+    avg_equity = 1000 (constant across 3 days)
+    turnover = 1000 / 1000 = 1.0
+    """
+    sim_input = _make_simple_input()
+    result = run_simulation(sim_input)
+
+    assert result.metrics.turnover == D("1")
+
+
+def test_turnover_multiple_contributions():
+    """Two contributions accumulate traded value."""
+    day1 = date(2024, 1, 15)
+    day2 = date(2024, 1, 16)
+    day3 = date(2024, 1, 17)
+
+    schedule = [
+        ScheduledContribution(date=day1, amount=D("1000"), currency="EUR"),
+        ScheduledContribution(date=day3, amount=D("500"), currency="EUR"),
+    ]
+    prices = {
+        day1: {"AAA": D("100"), "BBB": D("100")},
+        day2: {"AAA": D("100"), "BBB": D("100")},
+        day3: {"AAA": D("100"), "BBB": D("100")},
+    }
+
+    sim_input = _make_simple_input(schedule=schedule, prices=prices)
+    result = run_simulation(sim_input)
+
+    # total_traded = 1000 + 500 = 1500
+    assert result.curve[-1].cumulative_traded_value == D("1500")
+    # avg equity = (1000 + 1000 + 1500) / 3 = 3500/3
+    avg_eq = D("3500") / D("3")
+    expected_turnover = D("1500") / avg_eq
+    assert abs(result.metrics.turnover - expected_turnover) < D("0.0001")
+
+
+def test_cumulative_traded_value_in_curve():
+    """cumulative_traded_value increases only on contribution days."""
+    day1 = date(2024, 1, 15)
+    day2 = date(2024, 1, 16)
+    day3 = date(2024, 1, 17)
+
+    schedule = [ScheduledContribution(date=day1, amount=D("1000"), currency="EUR")]
+    prices = {
+        day1: {"AAA": D("100"), "BBB": D("100")},
+        day2: {"AAA": D("100"), "BBB": D("100")},
+        day3: {"AAA": D("100"), "BBB": D("100")},
+    }
+
+    sim_input = _make_simple_input(schedule=schedule, prices=prices)
+    result = run_simulation(sim_input)
+
+    # Traded on day 1 only
+    assert result.curve[0].cumulative_traded_value == D("1000")
+    assert result.curve[1].cumulative_traded_value == D("1000")
+    assert result.curve[2].cumulative_traded_value == D("1000")
+
+
+def test_turnover_with_costs():
+    """Commission costs do not inflate traded value."""
+    policy = _make_policy(
+        core_targets={"AAA": D("0.6"), "BBB": D("0.4")},
+        commission_fixed=D("5"),
+    )
+    sim_input = _make_simple_input(policy=policy)
+    result = run_simulation(sim_input)
+
+    # traded value = total_allocated = 1000 (the contribution amount),
+    # not 1000 + 10 (costs). Costs are separate.
+    assert result.curve[0].cumulative_traded_value == D("1000")

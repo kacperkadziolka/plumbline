@@ -1,4 +1,5 @@
 import hashlib
+import math
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -8,7 +9,6 @@ from app.domain.allocator import AllocationResult, TradeProposal, allocate_contr
 from app.domain.policy import PolicyConfig
 from app.domain.valuation import PortfolioValuation, PositionInput, valuate_portfolio
 
-_QUANTIZE_2DP = Decimal("0.01")
 _BPS_DIVISOR = Decimal("10000")
 
 
@@ -54,6 +54,7 @@ class EquityCurveRow:
     drawdown: Decimal
     cumulative_costs: Decimal
     contribution_today: Decimal
+    cumulative_traded_value: Decimal
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,8 @@ class SimulationMetrics:
     total_costs: Decimal
     total_contributions: Decimal
     final_equity: Decimal
+    annualized_volatility: Decimal | None
+    turnover: Decimal
 
 
 @dataclass(frozen=True)
@@ -174,6 +177,45 @@ def _execute_trades(
     return total_costs
 
 
+def _compute_annualized_volatility(curve: list[EquityCurveRow]) -> Decimal | None:
+    """Annualized volatility from TWR-adjusted daily returns.
+
+    Adjusts for contributions: return_i = (equity_i - contribution_i - equity_{i-1}) / equity_{i-1}.
+    Returns None if fewer than 2 return observations.
+    """
+    daily_returns: list[Decimal] = []
+    for i in range(1, len(curve)):
+        prev_equity = curve[i - 1].equity
+        if prev_equity <= Decimal("0"):
+            continue
+        adjusted_equity = curve[i].equity - curve[i].contribution_today
+        daily_returns.append((adjusted_equity - prev_equity) / prev_equity)
+
+    if len(daily_returns) < 2:
+        return None
+
+    n = len(daily_returns)
+    mean = sum(daily_returns, Decimal("0")) / n
+    variance = sum((r - mean) ** 2 for r in daily_returns) / (n - 1)
+    # Float conversion only for sqrt (documented MVP simplification, same as CAGR)
+    stdev = Decimal(str(math.sqrt(float(variance))))
+    return stdev * Decimal(str(math.sqrt(252)))
+
+
+def _compute_turnover(curve: list[EquityCurveRow]) -> Decimal:
+    """Turnover = total traded value / average portfolio equity."""
+    total_traded = curve[-1].cumulative_traded_value
+    if total_traded == Decimal("0"):
+        return Decimal("0")
+
+    positive_equities = [row.equity for row in curve if row.equity > Decimal("0")]
+    if not positive_equities:
+        return Decimal("0")
+
+    avg_equity = sum(positive_equities, Decimal("0")) / len(positive_equities)
+    return total_traded / avg_equity
+
+
 def _compute_metrics(curve: list[EquityCurveRow]) -> SimulationMetrics:
     total_contributions = sum((row.contribution_today for row in curve), Decimal("0"))
     final_equity = curve[-1].equity
@@ -200,6 +242,8 @@ def _compute_metrics(curve: list[EquityCurveRow]) -> SimulationMetrics:
         total_costs=total_costs,
         total_contributions=total_contributions,
         final_equity=final_equity,
+        annualized_volatility=_compute_annualized_volatility(curve),
+        turnover=_compute_turnover(curve),
     )
 
 
@@ -209,7 +253,8 @@ def _compute_curve_hash(curve: list[EquityCurveRow]) -> str:
         parts.append(
             f"{row.date.isoformat()}|{row.equity}|{row.cash}|"
             f"{row.positions_value}|{row.drawdown}|"
-            f"{row.cumulative_costs}|{row.contribution_today}"
+            f"{row.cumulative_costs}|{row.contribution_today}|"
+            f"{row.cumulative_traded_value}"
         )
     serialized = "\n".join(parts)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -245,6 +290,7 @@ def run_simulation(sim_input: SimulationInput) -> SimulationResult:
     holdings: dict[str, Decimal] = {}
     cash = Decimal("0")
     cumulative_costs = Decimal("0")
+    cumulative_traded_value = Decimal("0")
     peak_equity = Decimal("0")
 
     curve: list[EquityCurveRow] = []
@@ -287,6 +333,7 @@ def run_simulation(sim_input: SimulationInput) -> SimulationResult:
                 day_costs = _execute_trades(allocation.trades, holdings, day_prices, day_fx, ticker_info, policy)
                 cash -= allocation.total_allocated + day_costs
                 cumulative_costs += day_costs
+                cumulative_traded_value += allocation.total_allocated
 
                 # Re-value after trades
                 position_inputs = _build_position_inputs(holdings, ticker_info)
@@ -308,6 +355,7 @@ def run_simulation(sim_input: SimulationInput) -> SimulationResult:
                 drawdown=drawdown,
                 cumulative_costs=cumulative_costs,
                 contribution_today=contribution,
+                cumulative_traded_value=cumulative_traded_value,
             )
         )
 
