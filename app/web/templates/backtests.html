@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtests - Plumbline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body class="min-h-screen bg-gray-100">
+    <div class="max-w-5xl mx-auto py-8 px-4">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6">Backtests</h1>
+
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <p class="text-sm text-red-800">{{ error }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Run Form -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Run Backtest</h2>
+            <form action="/backtests" method="post">
+                <div class="mb-4">
+                    <label for="policy_id" class="block text-sm font-medium text-gray-700 mb-1">Policy</label>
+                    <select
+                        id="policy_id"
+                        name="policy_id"
+                        required
+                        class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border"
+                    >
+                        <option value="">-- Select a policy --</option>
+                        {% for p in policies %}
+                        <option value="{{ p.policy_id }}"
+                            {% if form_policy_id == p.policy_id|string %}selected{% endif %}>
+                            {{ p.name }} ({{ p.policy_hash[:8] }}...)
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label for="backtest_yaml" class="block text-sm font-medium text-gray-700 mb-1">Backtest Configuration (YAML)</label>
+                    <textarea
+                        id="backtest_yaml"
+                        name="backtest_yaml"
+                        rows="10"
+                        required
+                        placeholder="start_date: 2024-01-01&#10;end_date: 2024-12-31&#10;contribution_schedule:&#10;  type: monthly&#10;  amount: 1000&#10;  currency: EUR&#10;  day_of_month: 1"
+                        class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border font-mono text-sm"
+                    >{{ form_backtest_yaml }}</textarea>
+                </div>
+                <div class="mb-4">
+                    <label class="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            name="include_satellite"
+                            value="on"
+                            {% if form_include_satellite %}checked{% endif %}
+                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        >
+                        <span class="text-sm text-gray-700">Include satellite bucket</span>
+                    </label>
+                </div>
+                <button
+                    type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
+                >
+                    Run Backtest
+                </button>
+            </form>
+        </div>
+
+        <!-- Past Runs -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Past Runs</h2>
+
+            {% if runs %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Run</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Policy</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Range</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Config Hash</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for run in runs %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 whitespace-nowrap text-sm">
+                                <a href="/backtests/{{ run.run_id }}" class="text-blue-600 hover:text-blue-800 font-medium">#{{ run.run_id }}</a>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm">{{ run.policy_id }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm">{{ run.start_date }} &ndash; {{ run.end_date }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-500">{{ run.config_hash[:12] }}...</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ run.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-center py-8">No backtest runs yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex flex-wrap gap-4 mt-6">
+            <a href="/" class="text-blue-600 hover:text-blue-800 text-sm">Dashboard</a>
+            <a href="/holdings" class="text-blue-600 hover:text-blue-800 text-sm">Holdings</a>
+            <a href="/valuation" class="text-blue-600 hover:text-blue-800 text-sm">Valuation</a>
+            <a href="/policy" class="text-blue-600 hover:text-blue-800 text-sm">Policy</a>
+            <a href="/propose" class="text-blue-600 hover:text-blue-800 text-sm">Propose</a>
+            <a href="/import" class="text-blue-600 hover:text-blue-800 text-sm">Import Data</a>
+        </div>
+    </div>
+</body>
+</html>
