@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtest Run #{{ run.run_id }} - Plumbline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body class="min-h-screen bg-gray-100">
+    <div class="max-w-5xl mx-auto py-8 px-4">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6">Backtest Run #{{ run.run_id }}</h1>
+
+        <!-- Metadata -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Run Details</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Policy ID</p>
+                    <p class="text-sm font-semibold">{{ run.policy_id }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Date Range</p>
+                    <p class="text-sm font-semibold">{{ run.start_date }} &ndash; {{ run.end_date }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Config Hash</p>
+                    <p class="text-sm font-mono text-gray-600 break-all">{{ run.config_hash }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Policy Hash</p>
+                    <p class="text-sm font-mono text-gray-600 break-all">{{ run.policy_hash }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Curve Hash</p>
+                    <p class="text-sm font-mono text-gray-600 break-all">{{ run.curve_hash }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Created</p>
+                    <p class="text-sm font-semibold">{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Metrics</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Total Return</p>
+                    <p class="text-lg font-semibold">{{ "%.2f"|format(run.metrics.total_return * 100) }}%</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">CAGR</p>
+                    <p class="text-lg font-semibold">
+                        {% if run.metrics.cagr is not none %}{{ "%.2f"|format(run.metrics.cagr * 100) }}%{% else %}N/A{% endif %}
+                    </p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Max Drawdown</p>
+                    <p class="text-lg font-semibold">{{ "%.2f"|format(run.metrics.max_drawdown * 100) }}%</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Volatility</p>
+                    <p class="text-lg font-semibold">
+                        {% if run.metrics.annualized_volatility is not none %}{{ "%.2f"|format(run.metrics.annualized_volatility * 100) }}%{% else %}N/A{% endif %}
+                    </p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Final Equity</p>
+                    <p class="text-lg font-semibold">{{ "%.2f"|format(run.metrics.final_equity) }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Total Contributions</p>
+                    <p class="text-lg font-semibold">{{ "%.2f"|format(run.metrics.total_contributions) }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Total Costs</p>
+                    <p class="text-lg font-semibold">{{ "%.2f"|format(run.metrics.total_costs) }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 uppercase">Turnover</p>
+                    <p class="text-lg font-semibold">{{ "%.2f"|format(run.metrics.turnover) }}x</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Equity Curve -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Equity Curve</h2>
+            <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Equity</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cash</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Positions</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Drawdown</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cum. Costs</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Contribution</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for row in run.curve %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-2 whitespace-nowrap text-sm">{{ row.date }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-medium">{{ "%.2f"|format(row.equity) }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-500">{{ "%.2f"|format(row.cash) }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-500">{{ "%.2f"|format(row.positions_value) }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-500">{{ "%.2f"|format(row.drawdown * 100) }}%</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-500">{{ "%.2f"|format(row.cumulative_costs) }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right">
+                                {% if row.contribution_today > 0 %}
+                                <span class="text-green-600">{{ "%.2f"|format(row.contribution_today) }}</span>
+                                {% else %}
+                                <span class="text-gray-400">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Backtest Configuration -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Backtest Configuration</h2>
+            <pre class="bg-gray-50 rounded-lg p-4 font-mono text-sm text-gray-700 overflow-x-auto">{{ run.backtest_yaml }}</pre>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex flex-wrap gap-4 mt-6">
+            <a href="/" class="text-blue-600 hover:text-blue-800 text-sm">Dashboard</a>
+            <a href="/holdings" class="text-blue-600 hover:text-blue-800 text-sm">Holdings</a>
+            <a href="/valuation" class="text-blue-600 hover:text-blue-800 text-sm">Valuation</a>
+            <a href="/policy" class="text-blue-600 hover:text-blue-800 text-sm">Policy</a>
+            <a href="/propose" class="text-blue-600 hover:text-blue-800 text-sm">Propose</a>
+            <a href="/backtests" class="text-blue-600 hover:text-blue-800 text-sm">Backtests</a>
+            <a href="/import" class="text-blue-600 hover:text-blue-800 text-sm">Import Data</a>
+        </div>
+    </div>
+</body>
+</html>

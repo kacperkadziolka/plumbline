@@ -56,6 +56,10 @@ from app.application.use_cases.list_proposals import (
     ProposalSummary,
     list_proposals,
 )
+from app.application.use_cases.run_backtest import (
+    RunBacktestResult,
+    run_backtest,
+)
 from app.application.use_cases.save_backtest_run import (
     SaveBacktestRunResult,
     save_backtest_run,
@@ -93,6 +97,7 @@ __all__ = [
     "MetricsSummary",
     "PolicySummary",
     "ProposalSummary",
+    "RunBacktestResult",
     "SaveBacktestRunResult",
     "SavePolicyResult",
     "SaveProposalResult",
@@ -111,6 +116,7 @@ __all__ = [
     "import_prices_csv",
     "list_backtest_runs",
     "list_policies",
+    "run_backtest",
     "list_proposals",
     "save_backtest_run",
     "save_policy",
