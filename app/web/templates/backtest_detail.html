@@ -6,6 +6,7 @@
     <title>Backtest Run #{{ run.run_id }} - Plumbline</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="min-h-screen bg-gray-100">
     <div class="max-w-5xl mx-auto py-8 px-4">
@@ -85,9 +86,32 @@
             </div>
         </div>
 
-        <!-- Equity Curve -->
+        <!-- Charts -->
         <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
             <h2 class="text-lg font-semibold text-gray-800 mb-4">Equity Curve</h2>
+            <div style="position: relative; height: 350px;">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Drawdown</h2>
+                <div style="position: relative; height: 250px;">
+                    <canvas id="drawdownChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Contributions</h2>
+                <div style="position: relative; height: 250px;">
+                    <canvas id="contributionsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Equity Curve Data -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Equity Curve Data</h2>
             <div class="overflow-x-auto max-h-96 overflow-y-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50 sticky top-0">
@@ -141,5 +165,139 @@
             <a href="/import" class="text-blue-600 hover:text-blue-800 text-sm">Import Data</a>
         </div>
     </div>
+
+    <script>
+    (function() {
+        const curveData = [
+            {% for row in run.curve %}
+            {
+                date: "{{ row.date }}",
+                equity: {{ "%.2f"|format(row.equity) }},
+                cash: {{ "%.2f"|format(row.cash) }},
+                positions: {{ "%.2f"|format(row.positions_value) }},
+                drawdown: {{ "%.4f"|format(row.drawdown) }},
+                contribution: {{ "%.2f"|format(row.contribution_today) }}
+            }{{ "," if not loop.last }}
+            {% endfor %}
+        ];
+
+        const labels = curveData.map(d => d.date);
+
+        // Equity Curve chart
+        new Chart(document.getElementById("equityChart"), {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: "Total Equity",
+                        data: curveData.map(d => d.equity),
+                        borderColor: "#2563eb",
+                        backgroundColor: "rgba(37, 99, 235, 0.1)",
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        tension: 0.1
+                    },
+                    {
+                        label: "Positions",
+                        data: curveData.map(d => d.positions),
+                        borderColor: "#7c3aed",
+                        backgroundColor: "transparent",
+                        pointRadius: 0,
+                        borderWidth: 1.5,
+                        borderDash: [4, 2],
+                        tension: 0.1
+                    },
+                    {
+                        label: "Cash",
+                        data: curveData.map(d => d.cash),
+                        borderColor: "#059669",
+                        backgroundColor: "transparent",
+                        pointRadius: 0,
+                        borderWidth: 1.5,
+                        borderDash: [4, 2],
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: { legend: { position: "top" } },
+                scales: {
+                    x: {
+                        ticks: { maxTicksLimit: 12, maxRotation: 45 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { callback: function(v) { return v.toLocaleString(); } }
+                    }
+                }
+            }
+        });
+
+        // Drawdown chart
+        new Chart(document.getElementById("drawdownChart"), {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Drawdown %",
+                    data: curveData.map(d => -(d.drawdown * 100)),
+                    borderColor: "#dc2626",
+                    backgroundColor: "rgba(220, 38, 38, 0.15)",
+                    fill: true,
+                    pointRadius: 0,
+                    borderWidth: 1.5,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        ticks: { maxTicksLimit: 8, maxRotation: 45 }
+                    },
+                    y: {
+                        ticks: { callback: function(v) { return v.toFixed(1) + "%"; } }
+                    }
+                }
+            }
+        });
+
+        // Contributions chart (only dates with contributions)
+        const contribData = curveData.filter(d => d.contribution > 0);
+        new Chart(document.getElementById("contributionsChart"), {
+            type: "bar",
+            data: {
+                labels: contribData.map(d => d.date),
+                datasets: [{
+                    label: "Contribution",
+                    data: contribData.map(d => d.contribution),
+                    backgroundColor: "#059669",
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        ticks: { maxTicksLimit: 10, maxRotation: 45 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { callback: function(v) { return v.toLocaleString(); } }
+                    }
+                }
+            }
+        });
+    })();
+    </script>
 </body>
 </html>

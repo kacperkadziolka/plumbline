@@ -136,6 +136,12 @@ def test_run_backtest_full_integration(client: TestClient) -> None:
     assert "Total Return" in detail_response.text
     assert "2024-01-15" in detail_response.text
 
+    # Charts are included
+    assert "chart.js" in detail_response.text.lower()
+    assert 'id="equityChart"' in detail_response.text
+    assert 'id="drawdownChart"' in detail_response.text
+    assert 'id="contributionsChart"' in detail_response.text
+
 
 def test_backtests_list_shows_run_after_creation(client: TestClient) -> None:
     # After the full integration test, there should be at least one run
